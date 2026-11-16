@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07071a">
+<title>POSITION &amp; NUMBER</title>
+<style>
+:root{
+  --bg:#07071a;--panel:#10102b;--panel2:#171740;--line:#2b2b66;
+  --blue:#2de2ff;--purple:#a855f7;--pink:#ff4fd8;--text:#e9ecff;--dim:#8d92c9;
+  --good:#37ffb0;--bad:#ff5577;
+  --font:"Trebuchet MS","Segoe UI",system-ui,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--font);color:var(--text);background:var(--bg);
+  background-image:radial-gradient(circle at 15% 0%,rgba(45,226,255,.16),transparent 45%),
+                   radial-gradient(circle at 90% 100%,rgba(168,85,247,.2),transparent 50%);
+  background-attachment:fixed;
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  overflow-x:hidden;user-select:none;
+}
+button{font:inherit;color:inherit;border:0;cursor:pointer;background:none}
+button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+#app{max-width:480px;margin:0 auto;padding:14px 14px 28px}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+h1{font-size:clamp(20px,6vw,27px);font-weight:900;letter-spacing:.06em;
+  background:linear-gradient(90deg,var(--blue),var(--purple),var(--pink),var(--blue));background-size:300% 100%;
+  -webkit-background-clip:text;background-clip:text;color:transparent;animation:flow 6s linear infinite;
+  text-align:center;flex:1}
+@keyframes flow{to{background-position:300% 0}}
+.icon-btn{width:42px;height:42px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-size:19px;
+  transition:transform .15s,box-shadow .2s}
+.icon-btn:active{transform:scale(.9)}
+.icon-btn:hover{box-shadow:0 0 14px rgba(45,226,255,.35)}
+.hidden{display:none!important}
+.screen{animation:fadein .35s ease}
+@keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* Menu */
+.tagline{text-align:center;color:var(--dim);margin:6px 0 18px;line-height:1.5;font-size:15px}
+.mode{width:100%;display:flex;align-items:center;gap:14px;text-align:left;padding:16px;margin-bottom:12px;
+  background:var(--panel);border:2px solid var(--line);border-radius:18px;transition:.2s}
+.mode .e{font-size:30px}
+.mode b{display:block;font-size:17px}
+.mode small{color:var(--dim)}
+.mode.sel{border-color:var(--blue);box-shadow:0 0 22px rgba(45,226,255,.3),inset 0 0 20px rgba(45,226,255,.07)}
+.label{color:var(--dim);font-size:14px;margin:18px 0 8px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.seg button{padding:12px 4px;border-radius:14px;background:var(--panel);border:2px solid var(--line);font-weight:700;transition:.2s}
+.seg button small{display:block;color:var(--dim);font-weight:400;font-size:12px;margin-top:2px}
+.seg button.sel{border-color:var(--purple);box-shadow:0 0 18px rgba(168,85,247,.45);background:var(--panel2)}
+.cta{width:100%;padding:16px;border-radius:16px;font-size:18px;font-weight:900;letter-spacing:.04em;
+  background:linear-gradient(135deg,var(--blue),var(--purple));color:#07071a;
+  box-shadow:0 0 26px rgba(168,85,247,.5);transition:transform .15s,filter .2s}
+.cta:active{transform:scale(.97)}
+.cta:disabled{filter:grayscale(1) brightness(.5);box-shadow:none}
+.ghost{width:100%;padding:13px;margin-top:10px;border-radius:14px;background:transparent;border:2px solid var(--line);font-weight:700}
+.rules{margin-top:18px;padding:14px;border-radius:16px;background:var(--panel);border:1px solid var(--line);font-size:14px;color:var(--dim);line-height:1.55}
+.rules b{color:var(--blue)}.rules i{color:var(--purple);font-style:normal;font-weight:700}
+
+/* Game */
+.bar{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 6px;text-align:center}
+.chip small{display:block;color:var(--dim);font-size:12px}
+.chip b{font-size:16px}
+#prompt{text-align:center;color:var(--dim);min-height:22px;margin:6px 0 10px;font-size:15px}
+.slots{display:flex;justify-content:center;gap:12px;margin-bottom:12px}
+.slot{width:74px;height:88px;border-radius:18px;background:var(--panel);border:2px solid var(--line);
+  display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:900;color:var(--blue);
+  text-shadow:0 0 16px var(--blue);transition:.2s}
+.slot.fill{border-color:var(--blue);box-shadow:0 0 20px rgba(45,226,255,.4);animation:pop .2s}
+.slot.next{border-color:var(--purple);box-shadow:0 0 16px rgba(168,85,247,.5)}
+.slots.shake{animation:shake .35s}
+@keyframes pop{50%{transform:scale(1.12)}}
+@keyframes shake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+.res{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.rbox{border-radius:16px;padding:10px;text-align:center;background:var(--panel);border:2px solid var(--line)}
+.rbox span{font-size:13px;color:var(--dim);display:block}
+.rbox strong{font-size:38px;line-height:1.1;font-weight:900}
+.rbox.p strong{color:var(--good);text-shadow:0 0 14px var(--good)}
+.rbox.n strong{color:var(--pink);text-shadow:0 0 14px var(--pink)}
+.rbox.flash{animation:pop .35s}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
+.key{height:62px;border-radius:16px;background:var(--panel2);border:1px solid var(--line);font-size:26px;font-weight:800;
+  box-shadow:0 4px 0 #0a0a22;transition:transform .08s,box-shadow .08s,opacity .2s}
+.key:active{transform:translateY(3px);box-shadow:0 1px 0 #0a0a22;background:#22226a}
+.key:disabled{opacity:.25}
+.key.fn{font-size:17px;color:var(--dim)}
+.hist{margin-top:16px;border-radius:16px;background:var(--panel);border:1px solid var(--line);overflow:hidden}
+.hist h2{font-size:15px;padding:10px 14px;border-bottom:1px solid var(--line);color:var(--dim)}
+.hist .scroll{max-height:240px;overflow-y:auto}
+table{width:100%;border-collapse:collapse;text-align:center}
+th{font-size:12px;color:var(--dim);padding:8px;font-weight:600}
+td{padding:9px 6px;border-top:1px solid rgba(43,43,102,.6);font-size:18px;font-weight:700}
+td.g{letter-spacing:.25em;color:var(--blue)}td.pp{color:var(--good)}td.nn{color:var(--pink)}
+tr.new{animation:rowin .4s}
+@keyframes rowin{from{background:rgba(168,85,247,.35);transform:translateX(-14px);opacity:0}}
+.empty{padding:18px;color:var(--dim);font-size:14px;text-align:center}
+.acts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
+.acts button{padding:12px 4px;border-radius:14px;background:var(--panel);border:1px solid var(--line);font-weight:700;font-size:14px}
+.acts .danger{border-color:rgba(255,85,119,.55);color:var(--bad)}
+
+/* Modal / toast */
+#modal{position:fixed;inset:0;background:rgba(3,3,14,.8);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;
+  padding:20px;z-index:20;animation:fadein .25s}
+.box{width:100%;max-width:380px;background:var(--panel);border:2px solid var(--purple);border-radius:24px;padding:24px 20px;text-align:center;
+  box-shadow:0 0 40px rgba(168,85,247,.45);animation:boxin .35s cubic-bezier(.2,1.4,.4,1)}
+@keyframes boxin{from{transform:scale(.7);opacity:0}}
+.box .big{font-size:58px;animation:bounce 1s infinite}
+@keyframes bounce{50%{transform:translateY(-8px)}}
+.box h3{font-size:24px;margin:8px 0}
+.box p{color:var(--dim);line-height:1.5;margin-bottom:14px}
+.box .code{font-size:40px;font-weight:900;letter-spacing:.3em;color:var(--blue);text-shadow:0 0 16px var(--blue);margin:4px 0 14px}
+.box button+button{margin-top:10px}
+.box.win{border-color:var(--good);box-shadow:0 0 50px rgba(55,255,176,.45)}
+.box.lose{border-color:var(--bad);box-shadow:0 0 50px rgba(255,85,119,.4)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.stats div{background:var(--bg);border-radius:12px;padding:10px 4px}
+.stats b{display:block;font-size:24px;color:var(--blue)}
+.stats small{color:var(--dim)}
+.bests{margin-bottom:14px;text-align:left;font-size:15px;color:var(--dim)}
+.bests div{display:flex;justify-content:space-between;padding:7px 4px;border-bottom:1px solid var(--line)}
+.bests b{color:var(--text)}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,30px);opacity:0;z-index:30;
+  background:var(--panel2);border:1px solid var(--bad);color:var(--text);padding:11px 18px;border-radius:14px;font-weight:700;
+  pointer-events:none;transition:.25s;max-width:90%;text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+#fx{position:fixed;inset:0;pointer-events:none;z-index:25}
+.codeIn{width:100%;margin:0 0 14px;padding:14px;border-radius:14px;border:2px solid var(--line);background:var(--bg);color:var(--blue);font:900 30px var(--font);text-align:center;letter-spacing:.4em;user-select:text}
+.codeIn:focus{outline:none;border-color:var(--blue);box-shadow:0 0 16px rgba(45,226,255,.4)}
+#hist2Wrap{margin-top:12px}
+.credit{text-align:center;margin-top:26px;color:var(--dim);font-size:14px}
+.credit b{letter-spacing:.2em;background:linear-gradient(90deg,var(--blue),var(--purple));-webkit-background-clip:text;background-clip:text;color:transparent}
+@media (max-width:360px){.slot{width:62px;height:76px;font-size:38px}.key{height:54px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <button class="icon-btn" id="homeBtn" aria-label="Main menu" title="Main menu">🏠</button>
+    <h1>POSITION &amp; NUMBER</h1>
+    <button class="icon-btn" id="muteBtn" aria-label="Toggle sound" title="Sound">🔊</button>
+  </header>
+
+  <!-- MENU -->
+  <section id="menu" class="screen">
+    <p class="tagline">Crack the secret 3-digit code.<br>N = digits that exist in the secret. P = digits in the exact position.</p>
+    <button class="mode sel" data-mode="cpu"><span class="e">🤖</span><span><b>Player vs Computer</b><small>The computer picks a secret code</small></span></button>
+    <button class="mode" data-mode="two"><span class="e">👥</span><span><b>Two Players</b><small>One sets the code, the other guesses</small></span></button>
+    <button class="mode" data-mode="online"><span class="e">🌐</span><span><b>Online Duel</b><small>Play a friend on another phone</small></span></button>
+    <div class="label">Difficulty</div>
+    <div class="seg" id="diffSeg">
+      <button data-diff="easy" class="sel">Easy<small>Unlimited</small></button>
+      <button data-diff="medium">Medium<small>10 attempts</small></button>
+      <button data-diff="hard">Hard<small>7 attempts</small></button>
+    </div>
+    <div style="height:20px"></div>
+    <button class="cta" id="startBtn">START GAME</button>
+    <button class="ghost" id="scoreBtn">🏆 Scoreboard</button>
+    <div class="rules">
+      <b>Rules:</b> the code has 3 different digits and never starts with 0.<br>
+      Example: secret <i>675</i>, guess <i>476</i> gives <i>P=1</i> (the 7 is in the right position) and <i>N=2</i> (7 and 6 both exist in the secret). N counts every shared digit, so P can never be bigger than N.
+    </div>
+  </section>
+
+  <!-- GAME -->
+  <section id="game" class="screen hidden">
+    <div class="bar">
+      <div class="chip"><small>Secret</small><b id="secretStat">🔒 Hidden</b></div>
+      <div class="chip"><small>Attempts</small><b id="attStat">0 / ∞</b></div>
+      <div class="chip"><small>Level</small><b id="lvlStat">Easy</b></div>
+    </div>
+    <div id="prompt"></div>
+    <div class="slots" id="slots"></div>
+    <div class="res">
+      <div class="rbox p" id="pBox"><span>POSITION (P)</span><strong id="pVal">–</strong></div>
+      <div class="rbox n" id="nBox"><span>NUMBER (N)</span><strong id="nVal">–</strong></div>
+    </div>
+    <div class="pad" id="pad"></div>
+    <button class="cta" id="submitBtn">SUBMIT GUESS</button>
+    <div class="hist" id="histWrap">
+      <h2>Game history</h2>
+      <div class="scroll" id="hist"></div>
+    </div>
+    <div class="hist hidden" id="hist2Wrap"><h2>Opponent’s guesses on you</h2><div class="scroll" id="hist2"></div></div>
+    <div class="acts">
+      <button id="newBtn">🆕 New Game</button>
+      <button id="restartBtn">🔄 Restart</button>
+      <button id="giveBtn" class="danger">🏳️ Give Up</button>
+    </div>
+  </section>
+  <footer class="credit">Created by <b>MOIN</b></footer>
+</div>
+<div id="modal" class="hidden"></div>
+<div id="toast"></div>
+<canvas id="fx"></canvas>
+
+<script>
+"use strict";
+(() => {
+  const $ = s => document.querySelector(s);
+  const LIMITS = { easy: Infinity, medium: 10, hard: 7 };
+  const NAMES = { easy: "Easy", medium: "Medium", hard: "Hard" };
+  const S = { mode: "cpu", diff: "easy", phase: "menu", secret: "", cur: "", guesses: [], over: false };
+
+  /* ---------- Storage ---------- */
+  const SKEY = "pn_stats_v1";
+  const blank = () => ({ wins: 0, losses: 0, best: { easy: null, medium: null, hard: null, online: null } });
+  function loadStats() {
+    try {
+      const d = JSON.parse(localStorage.getItem(SKEY));
+      if (d && typeof d.wins === "number") return Object.assign(blank(), d, { best: Object.assign(blank().best, d.best) });
+    } catch (e) {}
+    return blank();
+  }
+  function saveStats(st) { try { localStorage.setItem(SKEY, JSON.stringify(st)); } catch (e) {} }
+  let muted = false;
+  try { muted = localStorage.getItem("pn_mute") === "1"; } catch (e) {}
+
+  /* ---------- Sound ---------- */
+  let actx = null;
+  function tone(f, d, type = "sine", v = .15, delay = 0) {
+    if (muted) return;
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === "suspended") actx.resume();
+      const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + delay;
+      o.type = type; o.frequency.setValueAtTime(f, t);
+      g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.001, t + d);
+      o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + d + .02);
+    } catch (e) {}
+  }
+  const sfx = {
+    tap: () => tone(520, .07, "triangle", .12),
+    del: () => tone(300, .08, "triangle", .12),
+    err: () => { tone(160, .18, "sawtooth", .12); tone(120, .2, "sawtooth", .12, .1); },
+    send: () => { tone(440, .1, "square", .08); tone(660, .14, "square", .08, .08); },
+    win: () => [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, .25, "triangle", .16, i * .11)),
+    lose: () => [400, 330, 260, 190].forEach((f, i) => tone(f, .3, "sawtooth", .1, i * .16))
+  };
+  function paintMute() { $("#muteBtn").textContent = muted ? "🔇" : "🔊"; }
+  $("#muteBtn").onclick = () => {
+    muted = !muted; paintMute();
+    try { localStorage.setItem("pn_mute", muted ? "1" : "0"); } catch (e) {}
+    if (!muted) sfx.tap();
+  };
+
+  /* ---------- Game logic ---------- */
+  const rnd = n => Math.floor(Math.random() * n);
+  function genSecret() {
+    const pool = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const first = pool.splice(rnd(pool.length), 1)[0];
+    const rest = [0, ...pool];
+    const b = rest.splice(rnd(rest.length), 1)[0];
+    const c = rest.splice(rnd(rest.length), 1)[0];
+    return "" + first + b + c;
+  }
+  function validCode(s) {
+    return /^[1-9][0-9]{2}$/.test(s) && new Set(s).size === 3;
+  }
+  function score(secret, guess) {
+    // P = digits in the exact right position.
+    // N = all guessed digits that exist in the secret (anywhere), so N >= P always.
+    let p = 0, n = 0;
+    for (let i = 0; i < 3; i++) {
+      if (guess[i] === secret[i]) p++;
+      if (secret.includes(guess[i])) n++;
+    }
+    return { p, n };
+  }
+  const limit = () => S.mode === "online" ? Infinity : LIMITS[S.diff];
+
+  /* ---------- UI helpers ---------- */
+  let toastT;
+  function toast(msg) {
+    const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 1700);
+  }
+  function reject(msg) {
+    sfx.err(); toast(msg);
+    const s = $("#slots"); s.classList.remove("shake"); void s.offsetWidth; s.classList.add("shake");
+  }
+  function showModal(o) {
+    const m = $("#modal");
+    m.innerHTML = `<div class="box ${o.cls || ""}">${o.icon ? `<div class="big">${o.icon}</div>` : ""}<h3>${o.title}</h3>${o.body || ""}<div id="macts"></div></div>`;
+    const wrap = m.querySelector("#macts");
+    (o.actions || []).forEach(a => {
+      const b = document.createElement("button");
+      b.className = a.ghost ? "ghost" : "cta"; b.textContent = a.label;
+      b.onclick = () => { const inp = m.querySelector("input"); const v = inp ? inp.value : ""; closeModal(); a.fn && a.fn(v); };
+      wrap.appendChild(b);
+    });
+    m.classList.remove("hidden");
+  }
+  function closeModal() { $("#modal").classList.add("hidden"); $("#modal").innerHTML = ""; }
+  const modalOpen = () => !$("#modal").classList.contains("hidden");
+
+  /* ---------- Rendering ---------- */
+  function buildPad() {
+    const pad = $("#pad"); pad.innerHTML = "";
+    const keys = ["1","2","3","4","5","6","7","8","9","C","0","⌫"];
+    keys.forEach(k => {
+      const b = document.createElement("button");
+      b.className = "key" + (/\d/.test(k) ? "" : " fn"); b.textContent = k === "C" ? "Clear" : k;
+      b.dataset.k = k; b.onclick = () => press(k); pad.appendChild(b);
+    });
+  }
+  function render() {
+    const setup = S.phase === "setup";
+    const slots = $("#slots"); slots.innerHTML = "";
+    for (let i = 0; i < 3; i++) {
+      const d = document.createElement("div");
+      const ch = S.cur[i];
+      d.className = "slot" + (ch ? " fill" : "") + (i === S.cur.length && !S.over ? " next" : "");
+      d.textContent = ch ? (setup ? "•" : ch) : "";
+      slots.appendChild(d);
+    }
+    document.querySelectorAll(".key").forEach(k => {
+      const v = k.dataset.k;
+      if (!/\d/.test(v)) { k.disabled = S.over; return; }
+      k.disabled = S.over || S.cur.length >= 3 || S.cur.includes(v) || (S.cur.length === 0 && v === "0");
+    });
+    $("#submitBtn").textContent = setup ? "🔒 LOCK SECRET" : "SUBMIT GUESS";
+    $("#submitBtn").disabled = S.over;
+    $("#secretStat").textContent = S.over ? "🔓 " + S.secret : (setup ? "✏️ Not set" : "🔒 Hidden");
+    const lim = limit();
+    $("#attStat").textContent = S.guesses.length + " / " + (lim === Infinity ? "∞" : lim);
+    $("#lvlStat").textContent = NAMES[S.diff];
+    $("#prompt").textContent = S.over ? "" :
+      setup ? "Player 1: enter a secret code (hidden as you type)" :
+      S.mode === "two" ? "Player 2: guess the secret code" : "Guess the computer’s code";
+    $("#histWrap").classList.toggle("hidden", setup);
+    $("#restartBtn").classList.toggle("hidden", setup);
+    $("#giveBtn").classList.toggle("hidden", setup);
+    $("#giveBtn").disabled = S.over; $("#restartBtn").disabled = false;
+    $("#acts") && 0;
+    document.querySelector(".acts").style.gridTemplateColumns = setup ? "1fr" : "repeat(3,1fr)";
+    renderHist(false);
+    onlineTweaks();
+  }
+  function renderHist(animateNew) {
+    const h = $("#hist");
+    if (!S.guesses.length) { h.innerHTML = `<div class="empty">No guesses yet. Enter 3 different digits to start.</div>`; return; }
+    let rows = "";
+    for (let i = S.guesses.length - 1; i >= 0; i--) {
+      const g = S.guesses[i];
+      rows += `<tr class="${animateNew && i === S.guesses.length - 1 ? "new" : ""}"><td>${i + 1}</td><td class="g">${g.guess}</td><td class="pp">${g.p}</td><td class="nn">${g.n}</td></tr>`;
+    }
+    h.innerHTML = `<table><thead><tr><th>#</th><th>Guess</th><th>P</th><th>N</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  function showResult(r) {
+    $("#pVal").textContent = r ? r.p : "–"; $("#nVal").textContent = r ? r.n : "–";
+    if (r) ["#pBox", "#nBox"].forEach(id => { const e = $(id); e.classList.remove("flash"); void e.offsetWidth; e.classList.add("flash"); });
+  }
+  function show(screen) {
+    $("#menu").classList.toggle("hidden", screen !== "menu");
+    $("#game").classList.toggle("hidden", screen !== "game");
+    $("#homeBtn").style.visibility = screen === "menu" ? "hidden" : "visible";
+  }
+
+  /* ---------- Input ---------- */
+  function press(k) {
+    if (S.over || S.phase === "menu") return;
+    if (S.mode === "online" && !canType()) return;
+    if (k === "⌫") { if (S.cur) { S.cur = S.cur.slice(0, -1); sfx.del(); render(); } return; }
+    if (k === "C") { if (S.cur) { S.cur = ""; sfx.del(); render(); } return; }
+    if (S.cur.length >= 3) return;
+    if (S.cur.includes(k)) return reject("Digits can’t repeat");
+    if (S.cur.length === 0 && k === "0") return reject("First digit can’t be 0");
+    S.cur += k; sfx.tap(); render();
+  }
+  function submit() {
+    if (S.over) return;
+    const c = S.cur;
+    if (S.mode === "online" && !canType()) return;
+    if (c.length < 3) return reject("Enter exactly 3 digits");
+    if (!validCode(c)) return reject(/^0/.test(c) ? "First digit can’t be 0" : "Digits can’t repeat");
+    if (S.mode === "online") return onlineSend(c);
+    if (S.phase === "setup") {
+      S.secret = c; S.cur = ""; S.phase = "play"; sfx.send(); render(); showResult(null);
+      showModal({ icon: "🔒", title: "Secret locked", body: "<p>The code is hidden. Hand the device to Player 2.</p>",
+        actions: [{ label: "I’M READY", fn: () => sfx.tap() }] });
+      return;
+    }
+    const r = score(S.secret, c);
+    S.guesses.push({ guess: c, p: r.p, n: r.n });
+    S.cur = ""; sfx.send(); showResult(r);
+    if (r.p === 3) { S.over = true; render(); renderHist(true); return win(); }
+    if (S.guesses.length >= limit()) { S.over = true; render(); renderHist(true); return lose("out"); }
+    render(); renderHist(true);
+  }
+  $("#submitBtn").onclick = submit;
+  document.addEventListener("keydown", e => {
+    if (S.phase === "menu" || modalOpen()) return;
+    if (/^[0-9]$/.test(e.key)) press(e.key);
+    else if (e.key === "Backspace") press("⌫");
+    else if (e.key === "Delete" || e.key === "Escape") press("C");
+    else if (e.key === "Enter") { e.preventDefault(); submit(); }
+  });
+
+  /* ---------- Outcomes ---------- */
+  function record(won) {
+    const st = loadStats();
+    if (won) {
+      st.wins++;
+      const k = S.mode === "online" ? "online" : S.diff, n = S.guesses.length, b = st.best[k];
+      if (b === null || n < b) st.best[k] = n;
+    } else st.losses++;
+    saveStats(st);
+  }
+  function win() {
+    record(true); sfx.win(); confetti();
+    const n = S.guesses.length, best = loadStats().best[S.diff];
+    const msg = n === best ? "New best score for " + NAMES[S.diff] + "!" : "Best on " + NAMES[S.diff] + ": " + best + " attempts";
+    setTimeout(() => showModal({ cls: "win", icon: "🏆", title: "Code cracked!",
+      body: `<div class="code">${S.secret}</div><p>Solved in <b style="color:var(--good)">${n}</b> attempt${n === 1 ? "" : "s"} total.<br>${msg}</p>`,
+      actions: [{ label: "PLAY AGAIN", fn: newGame }, { label: "Main menu", ghost: true, fn: goMenu }] }), 700);
+  }
+  function lose(why) {
+    record(false); sfx.lose();
+    const t = why === "out" ? "Game over" : "You gave up";
+    const sub = why === "out" ? "You ran out of attempts." : "Better luck next time.";
+    setTimeout(() => showModal({ cls: "lose", icon: why === "out" ? "💥" : "🏳️", title: t,
+      body: `<p>${sub} The secret code was</p><div class="code">${S.secret}</div>`,
+      actions: [{ label: "TRY AGAIN", fn: newGame }, { label: "Main menu", ghost: true, fn: goMenu }] }), why === "out" ? 600 : 0);
+  }
+  function confetti() {
+    const cv = $("#fx"), ctx = cv.getContext("2d");
+    cv.width = innerWidth; cv.height = innerHeight;
+    const cols = ["#2de2ff", "#a855f7", "#ff4fd8", "#37ffb0", "#ffffff"];
+    const ps = Array.from({ length: 140 }, () => ({
+      x: cv.width / 2, y: cv.height * .4, vx: (Math.random() - .5) * 14, vy: -Math.random() * 14 - 3,
+      s: 4 + Math.random() * 6, c: cols[rnd(cols.length)], r: Math.random() * 6
+    }));
+    let f = 0;
+    (function loop() {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ps.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += .3; p.r += .2; ctx.fillStyle = p.c;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * .6); ctx.restore(); });
+      if (++f < 150) requestAnimationFrame(loop); else ctx.clearRect(0, 0, cv.width, cv.height);
+    })();
+  }
+
+  /* ---------- Flow ---------- */
+  function newGame() {
+    S.cur = ""; S.guesses = []; S.over = false;
+    if (S.mode === "cpu") { S.secret = genSecret(); S.phase = "play"; }
+    else { S.secret = ""; S.phase = "setup"; }
+    showResult(null); show("game"); render();
+  }
+  function restart() {
+    S.cur = ""; S.guesses = []; S.over = false; showResult(null); render();
+    toast("Same secret, fresh attempts");
+  }
+  function goMenu() { onlineClose(); S.phase = "menu"; S.over = false; show("menu"); }
+
+  $("#startBtn").onclick = () => { sfx.tap(); if (S.mode === "online") onlineLobby(); else newGame(); };
+  $("#homeBtn").onclick = goMenu;
+  $("#newBtn").onclick = () => {
+    if (S.phase === "play" && !S.over && S.guesses.length)
+      showModal({ icon: "🆕", title: "Start a new game?", body: "<p>Your current game will be discarded and won’t count as a loss.</p>",
+        actions: [{ label: "NEW GAME", fn: newGame }, { label: "Keep playing", ghost: true }] });
+    else newGame();
+  };
+  $("#restartBtn").onclick = () => {
+    if (S.guesses.length && !S.over)
+      showModal({ icon: "🔄", title: "Restart this game?", body: "<p>Keeps the same secret code and clears your guesses.</p>",
+        actions: [{ label: "RESTART", fn: restart }, { label: "Cancel", ghost: true }] });
+    else restart();
+  };
+  $("#giveBtn").onclick = () => {
+    if (S.mode === "online") return showModal({ icon: "🚪", title: "Leave the room?", body: "<p>Your opponent will see that you left.</p>", actions: [{ label: "LEAVE", fn: goMenu }, { label: "Stay", ghost: true }] });
+    if (S.over) return;
+    showModal({ icon: "🏳️", title: "Give up?", body: "<p>The secret will be revealed and this game counts as a loss.</p>",
+      actions: [{ label: "GIVE UP", fn: () => { S.over = true; render(); lose("giveup"); } }, { label: "Keep playing", ghost: true }] });
+  };
+
+  /* ---------- Menu ---------- */
+  document.querySelectorAll(".mode").forEach(b => b.onclick = () => {
+    S.mode = b.dataset.mode; sfx.tap();
+    document.querySelectorAll(".mode").forEach(x => x.classList.toggle("sel", x === b));
+  });
+  document.querySelectorAll("#diffSeg button").forEach(b => b.onclick = () => {
+    S.diff = b.dataset.diff; sfx.tap();
+    document.querySelectorAll("#diffSeg button").forEach(x => x.classList.toggle("sel", x === b));
+  });
+  $("#scoreBtn").onclick = () => {
+    const st = loadStats(), tot = st.wins + st.losses, rate = tot ? Math.round(st.wins / tot * 100) : 0;
+    const bst = d => st.best[d] === null ? "–" : st.best[d] + " attempts";
+    showModal({ icon: "🏆", title: "Scoreboard",
+      body: `<div class="stats"><div><b>${st.wins}</b><small>Wins</small></div><div><b>${st.losses}</b><small>Losses</small></div><div><b>${rate}%</b><small>Win rate</small></div></div>
+        <div class="bests"><div>Best score, Easy<b>${bst("easy")}</b></div><div>Best score, Medium<b>${bst("medium")}</b></div><div>Best score, Hard<b>${bst("hard")}</b></div><div>Best score, Online<b>${bst("online")}</b></div></div>`,
+      actions: [{ label: "CLOSE" }, { label: "Reset statistics", ghost: true, fn: () =>
+        showModal({ icon: "⚠️", title: "Reset statistics?", body: "<p>This erases all wins, losses and best scores.</p>",
+          actions: [{ label: "RESET", fn: () => { saveStats(blank()); toast("Statistics cleared"); } }, { label: "Cancel", ghost: true }] }) }] });
+  };
+
+  /* ---------- Online duel ---------- */
+  const O = { room: null, pid: 0, tok: "", st: null, es: null, shown: false, cnt: 0 };
+  async function api(path, body) {
+    try {
+      const r = await fetch("/api/" + path, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.assign({ room: O.room, tok: O.tok }, body)) });
+      return await r.json();
+    } catch (e) { return { error: "Can’t reach the server" }; }
+  }
+  function onlineLobby() {
+    if (location.protocol === "file:") return showModal({ icon: "🌐", title: "Server needed",
+      body: "<p>Run <b>node server.js</b>, then open the game at the address it prints, for example http://localhost:3000</p>", actions: [{ label: "OK" }] });
+    showModal({ icon: "🌐", title: "Online Duel",
+      body: '<p>Create a room and send the 4-digit code to your friend, or enter their code to join.</p><input id="codeIn" class="codeIn" maxlength="4" inputmode="numeric" placeholder="----" oninput="this.value=this.value.replace(/\\D/g,\'\')">',
+      actions: [{ label: "CREATE ROOM", fn: () => enterRoom() }, { label: "JOIN WITH CODE", ghost: true, fn: v => enterRoom(v) }, { label: "Cancel", ghost: true }] });
+  }
+  async function enterRoom(code) {
+    if (code !== undefined && !/^\d{4}$/.test(code)) { sfx.err(); return toast("Enter the 4-digit room code"); }
+    const r = await api(code ? "join" : "create", { room: code || null });
+    if (r.error) { sfx.err(); return toast(r.error); }
+    Object.assign(O, { room: r.room, pid: r.pid, tok: r.tok, st: null, shown: false, cnt: 0 });
+    S.cur = ""; S.guesses = []; S.over = false; S.phase = "play";
+    showResult(null); show("game"); render(); connect();
+  }
+  function connect() {
+    if (O.es) O.es.close();
+    O.es = new EventSource("/api/events?room=" + O.room + "&tok=" + O.tok);
+    O.es.onmessage = e => onlineApply(JSON.parse(e.data));
+    O.es.onerror = () => { if (O.es && O.es.readyState === 2) toast("Connection lost. Go to the menu and rejoin."); };
+  }
+  function onlineClose() { if (O.es) O.es.close(); O.es = null; O.room = null; O.st = null; }
+  const canType = () => {
+    const t = O.st;
+    if (!t || t.phase === "over" || t.phase === "wait") return false;
+    return t.phase === "setup" ? !t.ready[t.me] : t.turn === t.me;
+  };
+  function onlineApply(t) {
+    const prev = O.st; O.st = t;
+    S.over = t.phase === "over";
+    S.phase = t.phase === "setup" && !t.ready[t.me] ? "setup" : "play";
+    S.guesses = t.mine; S.secret = t.secrets ? t.secrets[1 - t.me] : "";
+    if (prev && prev.phase !== "setup" && t.phase === "setup") S.cur = "";
+    if (t.mine.length !== O.cnt) { O.cnt = t.mine.length; showResult(t.mine[t.mine.length - 1] || null); }
+    if (prev && t.phase === "play" && prev.turn !== t.me && t.turn === t.me) sfx.tap();
+    if (t.phase !== "over" && O.shown) { O.shown = false; closeModal(); }
+    render();
+    if (t.phase === "over" && !O.shown) { O.shown = true; onlineEnd(t); }
+  }
+  function onlineEnd(t) {
+    const won = t.winner === t.me, draw = t.winner === "draw";
+    if (!draw) record(won);
+    if (won) { sfx.win(); confetti(); } else if (draw) sfx.send(); else sfx.lose();
+    showModal({ cls: won ? "win" : draw ? "" : "lose", icon: won ? "🏆" : draw ? "🤝" : "💥",
+      title: won ? "You cracked it first!" : draw ? "It’s a draw!" : "Your code was cracked",
+      body: `<p>Their secret code was</p><div class="code">${t.secrets[1 - t.me]}</div><p>Yours was <b>${t.secrets[t.me]}</b></p>`,
+      actions: [{ label: "REMATCH", fn: () => api("rematch", {}) }, { label: "Main menu", ghost: true, fn: goMenu }] });
+  }
+  async function onlineSend(c) {
+    const setup = S.phase === "setup";
+    const r = await api(setup ? "secret" : "guess", setup ? { secret: c } : { guess: c });
+    if (r.error) return reject(r.error);
+    S.cur = ""; sfx.send(); render();
+  }
+  const rows2 = l => l.length
+    ? '<table><thead><tr><th>#</th><th>Guess</th><th>P</th><th>N</th></tr></thead><tbody>' +
+      l.map((g, i) => `<tr><td>${i + 1}</td><td class="g">${g.guess}</td><td class="pp">${g.p}</td><td class="nn">${g.n}</td></tr>`).reverse().join("") + "</tbody></table>"
+    : '<div class="empty">Nothing yet.</div>';
+  function onlineTweaks() {
+    const t = S.mode === "online" && O.st;
+    $("#newBtn").classList.toggle("hidden", !!t);
+    $("#giveBtn").textContent = t ? "🚪 Leave room" : "🏳️ Give Up";
+    $("#histWrap h2").textContent = t ? "Your guesses" : "Game history";
+    $("#hist2Wrap").classList.toggle("hidden", !t || S.phase === "setup");
+    if (!t) return;
+    const me = t.me, ok = canType(), lastOpp = t.theirs[t.theirs.length - 1];
+    $("#restartBtn").classList.add("hidden");
+    $("#giveBtn").classList.remove("hidden"); $("#giveBtn").disabled = false;
+    document.querySelector(".acts").style.gridTemplateColumns = "1fr";
+    $("#lvlStat").textContent = "Room " + t.code;
+    if (!ok) document.querySelectorAll(".key").forEach(k => k.disabled = true);
+    $("#submitBtn").disabled = !ok;
+    $("#prompt").textContent = (t.phase === "over" ? "" :
+      t.phase === "wait" ? "Room " + t.code + ": send this code to your friend and wait…" :
+      t.phase === "setup" ? (t.ready[me] ? "Secret locked. Waiting for your opponent…" : "Set your secret code (hidden as you type)") :
+      t.turn === me ? (lastOpp && lastOpp.p === 3 ? "Last chance! They cracked your code" : "Your turn: guess their code") : "Opponent is guessing…") +
+      (t.phase !== "over" && t.joined[1 - me] && !t.online[1 - me] ? " ⚠️ Opponent offline" : "");
+    $("#hist2").innerHTML = rows2(t.theirs);
+  }
+
+  /* ---------- Init ---------- */
+  buildPad(); paintMute(); show("menu");
+})();
+</script>
+</body>
+</html>
