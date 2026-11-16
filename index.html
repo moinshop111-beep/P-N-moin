@@ -9,7 +9,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="P&N">
-<title>POSITION &amp; NUMBER</title>
+<title>P&amp;N MOIN – Position &amp; Number</title>
 <style>
 :root{
   --bg:#07071a;--panel:#10102b;--panel2:#171740;--line:#2b2b66;
@@ -111,7 +111,7 @@ tr.new{animation:rowin .4s}
 /* Modal / toast */
 #modal{position:fixed;inset:0;background:rgba(3,3,14,.8);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;
   padding:20px;z-index:20;animation:fadein .25s}
-.box{width:100%;max-width:380px;background:var(--panel);border:2px solid var(--purple);border-radius:24px;padding:24px 20px;text-align:center;
+.box{width:100%;max-width:380px;max-height:92vh;overflow-y:auto;background:var(--panel);border:2px solid var(--purple);border-radius:24px;padding:24px 20px;text-align:center;
   box-shadow:0 0 40px rgba(168,85,247,.45);animation:boxin .35s cubic-bezier(.2,1.4,.4,1)}
 @keyframes boxin{from{transform:scale(.7);opacity:0}}
 .box .big{font-size:58px;animation:bounce 1s infinite}
@@ -134,6 +134,12 @@ tr.new{animation:rowin .4s}
   pointer-events:none;transition:.25s;max-width:90%;text-align:center}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 #fx{position:fixed;inset:0;pointer-events:none;z-index:25}
+.net{display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:var(--dim);margin:-4px 0 10px}
+.net i{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 8px var(--good)}
+.net.off{color:var(--bad)}.net.off i{background:var(--bad);box-shadow:0 0 8px var(--bad)}
+.mode.disabled{opacity:.45}
+.hl{text-align:left;max-height:190px;overflow-y:auto;font-size:14px;margin-bottom:12px}
+.hl div{display:flex;justify-content:space-between;padding:7px 4px;border-bottom:1px solid var(--line);color:var(--dim)}
 .codeIn{width:100%;margin:0 0 14px;padding:14px;border-radius:14px;border:2px solid var(--line);background:var(--bg);color:var(--blue);font:900 30px var(--font);text-align:center;letter-spacing:.4em;user-select:text}
 .codeIn:focus{outline:none;border-color:var(--blue);box-shadow:0 0 16px rgba(45,226,255,.4)}
 #hist2Wrap{margin-top:12px}
@@ -150,6 +156,7 @@ tr.new{animation:rowin .4s}
     <h1>POSITION &amp; NUMBER</h1>
     <button class="icon-btn" id="muteBtn" aria-label="Toggle sound" title="Sound">🔊</button>
   </header>
+  <div class="net on" id="net"><i></i><span>Online</span></div>
 
   <!-- MENU -->
   <section id="menu" class="screen">
@@ -222,7 +229,7 @@ tr.new{animation:rowin .4s}
     } catch (e) {}
     return blank();
   }
-  function saveStats(st) { try { localStorage.setItem(SKEY, JSON.stringify(st)); } catch (e) {} }
+  function saveStats(st) { try { localStorage.setItem(SKEY, JSON.stringify(st)); } catch (e) {} idbPut("stats", st); }
   let muted = false;
   try { muted = localStorage.getItem("pn_mute") === "1"; } catch (e) {}
 
@@ -416,6 +423,7 @@ tr.new{animation:rowin .4s}
       if (b === null || n < b) st.best[k] = n;
     } else st.losses++;
     saveStats(st);
+    idbAddGame({ ts: Date.now(), mode: S.mode, diff: S.mode === "online" ? "online" : S.diff, won, attempts: S.guesses.length, secret: S.secret, synced: false });
   }
   function win() {
     record(true); sfx.win(); confetti();
@@ -463,7 +471,11 @@ tr.new{animation:rowin .4s}
   }
   function goMenu() { onlineClose(); S.phase = "menu"; S.over = false; show("menu"); }
 
-  $("#startBtn").onclick = () => { sfx.tap(); if (S.mode === "online") onlineLobby(); else newGame(); };
+  $("#startBtn").onclick = () => {
+    sfx.tap();
+    if (S.mode === "online") { if (!netOk) { sfx.err(); return toast("Online Duel needs an internet connection"); } onlineLobby(); }
+    else newGame();
+  };
   $("#homeBtn").onclick = goMenu;
   $("#newBtn").onclick = () => {
     if (S.phase === "play" && !S.over && S.guesses.length)
@@ -493,16 +505,85 @@ tr.new{animation:rowin .4s}
     S.diff = b.dataset.diff; sfx.tap();
     document.querySelectorAll("#diffSeg button").forEach(x => x.classList.toggle("sel", x === b));
   });
-  $("#scoreBtn").onclick = () => {
+  $("#scoreBtn").onclick = async () => {
+    const hist = await idbGames(8);
     const st = loadStats(), tot = st.wins + st.losses, rate = tot ? Math.round(st.wins / tot * 100) : 0;
     const bst = d => st.best[d] === null ? "–" : st.best[d] + " attempts";
+    const names = { cpu: "vs Computer", two: "2 Players", online: "Online" };
+    const hl = hist.length ? '<div class="label" style="margin:4px 0">Recent games</div><div class="hl">' + hist.map(g => `<div><span>${new Date(g.ts).toLocaleDateString()} · ${names[g.mode] || g.mode}</span><b style="color:${g.won ? "var(--good)" : "var(--bad)"}">${g.won ? "Win" : "Loss"} · ${g.attempts}</b></div>`).join("") + "</div>" : "";
     showModal({ icon: "🏆", title: "Scoreboard",
       body: `<div class="stats"><div><b>${st.wins}</b><small>Wins</small></div><div><b>${st.losses}</b><small>Losses</small></div><div><b>${rate}%</b><small>Win rate</small></div></div>
-        <div class="bests"><div>Best score, Easy<b>${bst("easy")}</b></div><div>Best score, Medium<b>${bst("medium")}</b></div><div>Best score, Hard<b>${bst("hard")}</b></div><div>Best score, Online<b>${bst("online")}</b></div></div>`,
+        <div class="bests"><div>Best score, Easy<b>${bst("easy")}</b></div><div>Best score, Medium<b>${bst("medium")}</b></div><div>Best score, Hard<b>${bst("hard")}</b></div><div>Best score, Online<b>${bst("online")}</b></div></div>${hl}`,
       actions: [{ label: "CLOSE" }, { label: "Reset statistics", ghost: true, fn: () =>
         showModal({ icon: "⚠️", title: "Reset statistics?", body: "<p>This erases all wins, losses and best scores.</p>",
           actions: [{ label: "RESET", fn: () => { saveStats(blank()); toast("Statistics cleared"); } }, { label: "Cancel", ghost: true }] }) }] });
   };
+
+  /* ---------- IndexedDB (offline stats and game history) ---------- */
+  let dbp = null;
+  function idb() {
+    if (dbp) return dbp;
+    dbp = new Promise(res => {
+      try {
+        const rq = indexedDB.open("pn-moin", 1);
+        rq.onupgradeneeded = () => { const d = rq.result; d.createObjectStore("kv"); d.createObjectStore("games", { autoIncrement: true }); };
+        rq.onsuccess = () => res(rq.result);
+        rq.onerror = rq.onblocked = () => res(null);
+      } catch (e) { res(null); }
+    });
+    return dbp;
+  }
+  async function idbDo(store, mode, fn) {
+    const d = await idb(); if (!d) return null;
+    return new Promise(res => {
+      try {
+        const tx = d.transaction(store, mode), r = fn(tx.objectStore(store));
+        tx.oncomplete = () => res(r && r.result !== undefined ? r.result : true);
+        tx.onerror = tx.onabort = () => res(null);
+      } catch (e) { res(null); }
+    });
+  }
+  const idbPut = (k, v) => idbDo("kv", "readwrite", s => s.put(v, k));
+  const idbGet = k => idbDo("kv", "readonly", s => s.get(k));
+  const idbAddGame = g => idbDo("games", "readwrite", s => s.add(g));
+  async function idbGames(n) {
+    const d = await idb(); if (!d) return [];
+    return new Promise(res => {
+      const out = [];
+      try {
+        const rq = d.transaction("games").objectStore("games").openCursor(null, "prev");
+        rq.onsuccess = () => { const c = rq.result; if (c && out.length < n) { out.push(c.value); c.continue(); } else res(out); };
+        rq.onerror = () => res(out);
+      } catch (e) { res(out); }
+    });
+  }
+
+  /* ---------- Network status ---------- */
+  let netOk = navigator.onLine;
+  function paintNet() {
+    const n = $("#net");
+    n.classList.toggle("off", !netOk); n.classList.toggle("on", netOk);
+    n.querySelector("span").textContent = netOk ? "Online" : "Offline · local games still work";
+    document.querySelector('.mode[data-mode="online"]').classList.toggle("disabled", !netOk);
+  }
+  async function checkNet(announce) {
+    let ok = navigator.onLine;
+    if (ok) {
+      try {
+        const c = new AbortController(), t = setTimeout(() => c.abort(), 4000);
+        const r = await fetch("/api/ping?_=" + Date.now(), { cache: "no-store", signal: c.signal });
+        clearTimeout(t); ok = r.ok;
+      } catch (e) { ok = false; }
+    }
+    const changed = ok !== netOk; netOk = ok; paintNet();
+    if (changed && announce) {
+      toast(ok ? "Back online" : "You’re offline. Local games still work.");
+      if (ok && O.room && (!O.es || O.es.readyState === 2)) connect();
+    }
+  }
+  addEventListener("online", () => checkNet(true));
+  addEventListener("offline", () => checkNet(true));
+  setInterval(() => checkNet(true), 20000);
 
   /* ---------- Online duel ---------- */
   const O = { room: null, pid: 0, tok: "", st: null, es: null, shown: false, cnt: 0 };
@@ -525,6 +606,7 @@ tr.new{animation:rowin .4s}
     const r = await api(code ? "join" : "create", { room: code || null });
     if (r.error) { sfx.err(); return toast(r.error); }
     Object.assign(O, { room: r.room, pid: r.pid, tok: r.tok, st: null, shown: false, cnt: 0 });
+    try { localStorage.setItem("pn_session", JSON.stringify({ room: r.room, pid: r.pid, tok: r.tok })); } catch (e) {}
     S.cur = ""; S.guesses = []; S.over = false; S.phase = "play";
     showResult(null); show("game"); render(); connect();
   }
@@ -532,9 +614,9 @@ tr.new{animation:rowin .4s}
     if (O.es) O.es.close();
     O.es = new EventSource("/api/events?room=" + O.room + "&tok=" + O.tok);
     O.es.onmessage = e => onlineApply(JSON.parse(e.data));
-    O.es.onerror = () => { if (O.es && O.es.readyState === 2) toast("Connection lost. Go to the menu and rejoin."); };
+    O.es.onerror = () => { if (O.es && O.es.readyState === 2) { toast("Room not available any more. Start a new game."); if (!O.st) goMenu(); } };
   }
-  function onlineClose() { if (O.es) O.es.close(); O.es = null; O.room = null; O.st = null; }
+  function onlineClose() { if (O.es) O.es.close(); O.es = null; O.room = null; O.st = null; try { localStorage.removeItem("pn_session"); } catch (e) {} }
   const canType = () => {
     const t = O.st;
     if (!t || t.phase === "over" || t.phase === "wait") return false;
@@ -595,7 +677,22 @@ tr.new{animation:rowin .4s}
 
   /* ---------- Init ---------- */
   buildPad(); paintMute(); show("menu");
-  if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+  paintNet(); checkNet(false);
+  // Keep stats safe in IndexedDB too: restore if browser storage was cleared, otherwise mirror it
+  idbGet("stats").then(st => {
+    try { if (st && st.wins !== undefined && !localStorage.getItem(SKEY)) localStorage.setItem(SKEY, JSON.stringify(st)); else idbPut("stats", loadStats()); } catch (e) {}
+  });
+  // Resume an unfinished online room after a reload or reconnect
+  try {
+    const ss = JSON.parse(localStorage.getItem("pn_session"));
+    if (ss && ss.room && ss.tok && netOk) {
+      S.mode = "online";
+      document.querySelectorAll(".mode").forEach(x => x.classList.toggle("sel", x.dataset.mode === "online"));
+      Object.assign(O, { room: ss.room, pid: ss.pid, tok: ss.tok, st: null, shown: false, cnt: 0 });
+      S.phase = "play"; show("game"); render(); connect(); toast("Reconnecting to your room…");
+    }
+  } catch (e) {}
 })();
 </script>
 </body>
