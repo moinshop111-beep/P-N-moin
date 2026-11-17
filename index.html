@@ -140,6 +140,14 @@ tr.new{animation:rowin .4s}
 .mode.disabled{opacity:.45}
 .hl{text-align:left;max-height:190px;overflow-y:auto;font-size:14px;margin-bottom:12px}
 .hl div{display:flex;justify-content:space-between;padding:7px 4px;border-bottom:1px solid var(--line);color:var(--dim)}
+.acct{width:100%;display:flex;align-items:center;gap:12px;text-align:left;padding:10px 14px;margin-bottom:12px;background:var(--panel);border:1px solid var(--line);border-radius:16px}
+.acct small{display:block;color:var(--dim);font-size:12px}
+.av{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;object-fit:cover;background:linear-gradient(135deg,var(--blue),var(--purple));color:#07071a;font-weight:900;flex:none}
+.fld{width:100%;margin:0 0 10px;padding:13px 14px;border-radius:14px;border:2px solid var(--line);background:var(--bg);color:var(--text);font:600 16px var(--font);user-select:text}
+.fld:focus{outline:none;border-color:var(--blue)}
+.amsg{min-height:20px;font-size:14px;margin:-2px 0 10px;color:var(--bad)}
+.avl{display:block;text-align:left;color:var(--dim);font-size:13px;margin-bottom:10px}
+.avl input{margin-top:6px;width:100%;color:var(--dim)}
 .codeIn{width:100%;margin:0 0 14px;padding:14px;border-radius:14px;border:2px solid var(--line);background:var(--bg);color:var(--blue);font:900 30px var(--font);text-align:center;letter-spacing:.4em;user-select:text}
 .codeIn:focus{outline:none;border-color:var(--blue);box-shadow:0 0 16px rgba(45,226,255,.4)}
 #hist2Wrap{margin-top:12px}
@@ -160,6 +168,7 @@ tr.new{animation:rowin .4s}
 
   <!-- MENU -->
   <section id="menu" class="screen">
+    <button class="acct" id="acctBtn"></button>
     <p class="tagline">Crack the secret 3-digit code.<br>N = digits that exist in the secret. P = digits in the exact position.</p>
     <button class="mode sel" data-mode="cpu"><span class="e">🤖</span><span><b>Player vs Computer</b><small>The computer picks a secret code</small></span></button>
     <button class="mode" data-mode="two"><span class="e">👥</span><span><b>Two Players</b><small>One sets the code, the other guesses</small></span></button>
@@ -288,8 +297,8 @@ tr.new{animation:rowin .4s}
 
   /* ---------- UI helpers ---------- */
   let toastT;
-  function toast(msg) {
-    const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  function toast(msg, good) {
+    const t = $("#toast"); t.textContent = msg; t.style.borderColor = good ? "var(--good)" : "var(--bad)"; t.classList.add("show");
     clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 1700);
   }
   function reject(msg) {
@@ -303,7 +312,7 @@ tr.new{animation:rowin .4s}
     (o.actions || []).forEach(a => {
       const b = document.createElement("button");
       b.className = a.ghost ? "ghost" : "cta"; b.textContent = a.label;
-      b.onclick = () => { const inp = m.querySelector("input"); const v = inp ? inp.value : ""; closeModal(); a.fn && a.fn(v); };
+      b.onclick = () => { const inp = m.querySelector("input"); const v = inp ? inp.value : ""; if (!a.keep) closeModal(); a.fn && a.fn(v); };
       wrap.appendChild(b);
     });
     m.classList.remove("hidden");
@@ -423,7 +432,7 @@ tr.new{animation:rowin .4s}
       if (b === null || n < b) st.best[k] = n;
     } else st.losses++;
     saveStats(st);
-    idbAddGame({ ts: Date.now(), mode: S.mode, diff: S.mode === "online" ? "online" : S.diff, won, attempts: S.guesses.length, secret: S.secret, synced: false });
+    idbAddGame({ cid: uid(), ts: Date.now(), mode: S.mode, diff: S.mode === "online" ? "online" : S.diff, won, attempts: S.guesses.length, secret: S.secret, synced: false }).then(() => syncGames());
   }
   function win() {
     record(true); sfx.win(); confetti();
@@ -576,14 +585,193 @@ tr.new{animation:rowin .4s}
       } catch (e) { ok = false; }
     }
     const changed = ok !== netOk; netOk = ok; paintNet();
+    if (changed && ok) loadMe();
     if (changed && announce) {
-      toast(ok ? "Back online" : "You’re offline. Local games still work.");
+      toast(ok ? "Back online" : "You’re offline. Local games still work.", ok);
       if (ok && O.room && (!O.es || O.es.readyState === 2)) connect();
     }
   }
   addEventListener("online", () => checkNet(true));
   addEventListener("offline", () => checkNet(true));
   setInterval(() => checkNet(true), 20000);
+
+  /* ---------- Accounts ---------- */
+  const A = { enabled: null, user: null, stats: null };
+  const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(16).slice(2));
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  async function acall(method, path, body) {
+    try {
+      const r = await fetch("/api/" + path, { method, credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+      return await r.json();
+    } catch (e) { return { error: "Can’t reach the server" }; }
+  }
+  async function idbUnsynced() {
+    const d = await idb(); if (!d) return [];
+    return new Promise(res => {
+      const out = [];
+      try {
+        const tx = d.transaction("games", "readwrite"), rq = tx.objectStore("games").openCursor();
+        rq.onsuccess = () => {
+          const c = rq.result;
+          if (c) { const g = c.value; if (!g.synced) { if (!g.cid) { g.cid = uid(); c.update(g); } out.push({ k: c.key, g }); } c.continue(); }
+        };
+        tx.oncomplete = () => res(out); tx.onerror = tx.onabort = () => res([]);
+      } catch (e) { res([]); }
+    });
+  }
+  async function idbMarkSynced(keys) {
+    const d = await idb(); if (!d) return;
+    return new Promise(res => {
+      try {
+        const tx = d.transaction("games", "readwrite"), st = tx.objectStore("games");
+        keys.forEach(k => { const q = st.get(k); q.onsuccess = () => { if (q.result) { q.result.synced = true; st.put(q.result, k); } }; });
+        tx.oncomplete = () => res(); tx.onerror = tx.onabort = () => res();
+      } catch (e) { res(); }
+    });
+  }
+  async function syncGames() {
+    if (!A.user || !netOk) return;
+    const rows = (await idbUnsynced()).slice(0, 100);
+    if (!rows.length) return;
+    const r = await acall("POST", "sync", { games: rows.map(x => ({ cid: x.g.cid, mode: x.g.mode, diff: x.g.diff, won: x.g.won, attempts: x.g.attempts, ts: x.g.ts })) });
+    if (r.ok) { await idbMarkSynced(rows.map(x => x.k)); A.stats = r.stats; if (rows.length === 100) syncGames(); }
+  }
+  async function loadMe() {
+    if (!netOk) return paintAcct();
+    const r = await acall("GET", "me");
+    if (r.error) return paintAcct();
+    A.enabled = r.enabled !== false; A.user = r.user || null; A.stats = r.stats || null;
+    paintAcct(); if (A.user) syncGames();
+  }
+  const avatarHTML = (u, px) => u.avatar
+    ? `<img class="av" style="width:${px}px;height:${px}px" src="${esc(u.avatar)}" alt="">`
+    : `<span class="av" style="width:${px}px;height:${px}px;font-size:${Math.round(px * .45)}px">${esc(u.username[0].toUpperCase())}</span>`;
+  function paintAcct() {
+    const b = $("#acctBtn");
+    b.classList.toggle("hidden", A.enabled === false);
+    b.innerHTML = A.user
+      ? avatarHTML(A.user, 40) + `<span><b>${esc(A.user.username)}</b><small>Tap to open your profile</small></span>`
+      : '<span class="av">👤</span><span><b>Guest</b><small>Sign in to keep your progress on every device</small></span>';
+  }
+  $("#acctBtn").onclick = () => {
+    if (!netOk) return toast("Signing in needs an internet connection");
+    A.user ? profile() : loginForm();
+  };
+  const fld = (id, ph, type = "text", val = "", extra = "") => `<input id="${id}" class="fld" type="${type}" placeholder="${ph}" value="${val}" autocomplete="off" ${extra}>`;
+  const fv = (id, trim = true) => { const e = document.getElementById(id); return e ? (trim ? e.value.trim() : e.value) : ""; };
+  const amsg = (t, good) => { const e = $("#amsg"); if (e) { e.textContent = t; e.style.color = good ? "var(--good)" : "var(--bad)"; } };
+  function readAvatar(f) {
+    return new Promise((res, rej) => {
+      const img = new Image(), url = URL.createObjectURL(f);
+      img.onload = () => {
+        const c = document.createElement("canvas"); c.width = c.height = 128;
+        const x = c.getContext("2d"), s = Math.min(img.width, img.height);
+        x.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, 128, 128);
+        URL.revokeObjectURL(url); res(c.toDataURL("image/jpeg", .8));
+      };
+      img.onerror = () => rej(new Error("bad image")); img.src = url;
+    });
+  }
+  function loginForm() {
+    showModal({ icon: "👤", title: "Sign in",
+      body: "<p>Sign in to keep your stats on every device.</p>" + fld("f_id", "Username or email", "text", "", 'autocapitalize="off"') + fld("f_pw", "Password", "password") + '<div id="amsg" class="amsg"></div>',
+      actions: [{ label: "SIGN IN", keep: true, fn: doLogin }, { label: "Create account", ghost: true, keep: true, fn: registerForm },
+        { label: "Forgot password?", ghost: true, keep: true, fn: forgotForm }, { label: "Cancel", ghost: true }] });
+  }
+  async function doLogin() {
+    const id = fv("f_id"), pw = fv("f_pw", false);
+    if (!id || !pw) return amsg("Enter your username or email and password");
+    amsg("Signing in…", true);
+    const r = await acall("POST", "auth/login", { id, password: pw });
+    if (r.error) return amsg(r.error);
+    A.enabled = true; A.user = r.user; A.stats = r.stats; paintAcct(); closeModal(); sfx.win(); toast("Welcome back, " + r.user.username + "!", true); syncGames();
+  }
+  function registerForm() {
+    showModal({ icon: "📝", title: "Create account",
+      body: fld("f_un", "Username (3-20 letters, numbers, _)", "text", "", 'maxlength="20" autocapitalize="off"') + fld("f_em", "Email", "email") +
+        fld("f_pw", "Password (8+ characters)", "password") + fld("f_pw2", "Confirm password", "password") +
+        '<label class="avl">Profile picture (optional)<input id="f_av" type="file" accept="image/*"></label><div id="amsg" class="amsg"></div>',
+      actions: [{ label: "CREATE ACCOUNT", keep: true, fn: doRegister }, { label: "I already have an account", ghost: true, keep: true, fn: loginForm }, { label: "Cancel", ghost: true }] });
+  }
+  async function doRegister() {
+    const un = fv("f_un"), em = fv("f_em"), pw = fv("f_pw", false), pw2 = fv("f_pw2", false);
+    if (!/^[A-Za-z0-9_]{3,20}$/.test(un)) return amsg("Username: 3-20 letters, numbers or _");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)) return amsg("Enter a valid email");
+    if (pw.length < 8) return amsg("Password must be at least 8 characters");
+    if (pw !== pw2) return amsg("Passwords don’t match");
+    let avatar = null; const f = $("#f_av") && $("#f_av").files[0];
+    if (f) { try { avatar = await readAvatar(f); } catch (e) { return amsg("Couldn’t read that image"); } }
+    amsg("Creating your account…", true);
+    const r = await acall("POST", "auth/register", { username: un, email: em, password: pw, avatar });
+    if (r.error) return amsg(r.error);
+    A.enabled = true; A.user = r.user; A.stats = r.stats; paintAcct(); closeModal(); sfx.win(); toast("Welcome, " + r.user.username + "!", true); syncGames();
+  }
+  function forgotForm() {
+    showModal({ icon: "🔑", title: "Forgot password",
+      body: "<p>Enter your account email. If it exists, we’ll send a link to choose a new password.</p>" + fld("f_em", "Email", "email") + '<div id="amsg" class="amsg"></div>',
+      actions: [{ label: "SEND RESET LINK", keep: true, fn: doForgot }, { label: "Back to sign in", ghost: true, keep: true, fn: loginForm }] });
+  }
+  async function doForgot() {
+    const em = fv("f_em");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)) return amsg("Enter a valid email");
+    const r = await acall("POST", "auth/forgot", { email: em });
+    amsg(r.error || "If that email is registered, a reset link is on its way.", !r.error);
+  }
+  function resetForm(token) {
+    showModal({ icon: "🔐", title: "Choose a new password",
+      body: fld("f_pw", "New password (8+ characters)", "password") + fld("f_pw2", "Confirm new password", "password") + '<div id="amsg" class="amsg"></div>',
+      actions: [{ label: "SAVE PASSWORD", keep: true, fn: async () => {
+        const pw = fv("f_pw", false);
+        if (pw.length < 8) return amsg("Password must be at least 8 characters");
+        if (pw !== fv("f_pw2", false)) return amsg("Passwords don’t match");
+        const r = await acall("POST", "auth/reset", { token, password: pw });
+        if (r.error) return amsg(r.error);
+        history.replaceState(null, "", "/"); toast("Password updated. Please sign in.", true); loginForm();
+      } }, { label: "Cancel", ghost: true, fn: () => history.replaceState(null, "", "/") }] });
+  }
+  async function profile() {
+    if (!A.user) return loginForm();
+    if (netOk) { const r = await acall("GET", "me"); if (r.user) { A.user = r.user; A.stats = r.stats; paintAcct(); } }
+    const u = A.user, st = A.stats || { games: 0, wins: 0, losses: 0, winRate: 0, bestStreak: 0 };
+    showModal({ icon: avatarHTML(u, 72), title: esc(u.username),
+      body: `<p style="margin-bottom:10px;font-size:13px">${netOk ? "🟢 Online" : "🔴 Offline"} · ID ${esc(u.id)}<br>${esc(u.email)}</p>
+        <div class="stats"><div><b>${st.games}</b><small>Games</small></div><div><b>${st.wins}</b><small>Wins</small></div><div><b>${st.losses}</b><small>Losses</small></div></div>
+        <div class="stats"><div><b>${st.winRate}%</b><small>Win rate</small></div><div><b>${st.bestStreak}</b><small>Best streak</small></div><div><b>${new Date(u.created).getFullYear()}</b><small>Joined</small></div></div>`,
+      actions: [{ label: "EDIT PROFILE", keep: true, fn: editForm }, { label: "Sign out", ghost: true, keep: true, fn: doLogout },
+        { label: "Delete account", ghost: true, keep: true, fn: deleteForm }, { label: "Close", ghost: true }] });
+  }
+  function editForm() {
+    const u = A.user;
+    showModal({ icon: avatarHTML(u, 72), title: "Edit profile",
+      body: "<p>Change your username or picture.</p>" + fld("f_un", "Username", "text", esc(u.username), 'maxlength="20" autocapitalize="off"') +
+        '<label class="avl">New profile picture<input id="f_av" type="file" accept="image/*"></label><div id="amsg" class="amsg"></div>',
+      actions: [{ label: "SAVE", keep: true, fn: () => doEdit(false) }, { label: "Remove picture", ghost: true, keep: true, fn: () => doEdit(true) }, { label: "Back", ghost: true, keep: true, fn: profile }] });
+  }
+  async function doEdit(removeAv) {
+    const un = fv("f_un"), body = {};
+    if (un && un !== A.user.username) { if (!/^[A-Za-z0-9_]{3,20}$/.test(un)) return amsg("Username: 3-20 letters, numbers or _"); body.username = un; }
+    if (removeAv) body.avatar = null;
+    const f = $("#f_av") && $("#f_av").files[0];
+    if (f) { try { body.avatar = await readAvatar(f); } catch (e) { return amsg("Couldn’t read that image"); } }
+    if (!Object.keys(body).length) return amsg("Nothing to change");
+    const r = await acall("POST", "me/update", body);
+    if (r.error) return amsg(r.error);
+    A.user = r.user; paintAcct(); profile();
+  }
+  async function doLogout() {
+    await acall("POST", "auth/logout", {});
+    A.user = null; A.stats = null; paintAcct(); closeModal(); toast("Signed out", true);
+  }
+  function deleteForm() {
+    showModal({ icon: "⚠️", title: "Delete account?", cls: "lose",
+      body: "<p>This permanently deletes your account and online statistics. Games saved on this device stay here. Enter your password to confirm.</p>" + fld("f_pw", "Password", "password") + '<div id="amsg" class="amsg"></div>',
+      actions: [{ label: "DELETE MY ACCOUNT", keep: true, fn: async () => {
+        const pw = fv("f_pw", false); if (!pw) return amsg("Enter your password");
+        const r = await acall("POST", "me/delete", { password: pw });
+        if (r.error) return amsg(r.error);
+        A.user = null; A.stats = null; paintAcct(); closeModal(); toast("Account deleted", true);
+      } }, { label: "Keep my account", ghost: true, keep: true, fn: profile }] });
+  }
 
   /* ---------- Online duel ---------- */
   const O = { room: null, pid: 0, tok: "", st: null, es: null, shown: false, cnt: 0 };
@@ -693,6 +881,8 @@ tr.new{animation:rowin .4s}
       S.phase = "play"; show("game"); render(); connect(); toast("Reconnecting to your room…");
     }
   } catch (e) {}
+  paintAcct(); loadMe();
+  const resetTok = new URLSearchParams(location.search).get("reset"); if (resetTok) resetForm(resetTok);
 })();
 </script>
 </body>
