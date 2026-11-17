@@ -40,6 +40,22 @@ CREATE TABLE IF NOT EXISTS games (
   source TEXT NOT NULL DEFAULT 'client',
   played_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (user_id, cid)
+);
+CREATE TABLE IF NOT EXISTS friendships (
+  id SERIAL PRIMARY KEY,
+  requester INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  addressee INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'blocked')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS friendships_pair ON friendships (LEAST(requester, addressee), GREATEST(requester, addressee));
+CREATE TABLE IF NOT EXISTS notifications (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  data JSONB NOT NULL DEFAULT '{}',
+  read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );`;
 
 let pool = null, ready = false;
@@ -56,7 +72,11 @@ async function init() {
     await pool.query(SCHEMA);
     ready = true;
     console.log("Accounts ready (PostgreSQL connected)");
-    setInterval(() => pool.query("DELETE FROM sessions WHERE expires_at < now()").catch(() => {}), 3600e3);
+    setInterval(() => {
+      pool.query("DELETE FROM sessions WHERE expires_at < now()").catch(() => {});
+      pool.query("DELETE FROM notifications WHERE created_at < now() - interval '30 days'").catch(() => {});
+    }, 3600e3);
+    setInterval(() => conns.forEach(set => set.forEach(c => { try { c.res.write(": ping\n\n"); } catch (e) {} })), 25000);
   } catch (e) { console.log("Accounts disabled, database error:", e.message); }
 }
 
@@ -143,6 +163,85 @@ async function stats(userId) {
 }
 const clearCookie = { "Set-Cookie": "pn_sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0" };
 
+/* ---------- friends, presence, notifications ---------- */
+const conns = new Map();      // userId -> Set of { res, cid, st }  (one per open tab/device)
+const lastStatus = new Map(); // userId -> last status we told friends about
+const offTimers = new Map();  // userId -> timer that confirms a real disconnect
+const statusOf = id => {
+  const s = conns.get(id);
+  if (!s || !s.size) return "offline";
+  let st = "away";
+  for (const c of s) { if (c.st === "game") return "game"; if (c.st === "online") st = "online"; }
+  return st;
+};
+const emit = (id, obj) => {
+  const s = conns.get(id);
+  if (!s) return;
+  const d = "data: " + JSON.stringify(obj) + "\n\n";
+  s.forEach(c => { try { c.res.write(d); } catch (e) {} });
+};
+async function friendIds(id) {
+  const r = await pool.query("SELECT CASE WHEN requester = $1 THEN addressee ELSE requester END AS fid FROM friendships WHERE status = 'accepted' AND (requester = $1 OR addressee = $1)", [id]);
+  return r.rows.map(x => x.fid);
+}
+async function refreshPresence(u) {
+  const st = statusOf(u.id), prev = lastStatus.get(u.id) || "offline";
+  if (st === prev) return;
+  if (st === "offline") lastStatus.delete(u.id); else lastStatus.set(u.id, st);
+  const ids = await friendIds(u.id), seen = new Date().toISOString();
+  ids.forEach(f => {
+    emit(f, { t: "presence", id: u.player_id, status: st, seen });
+    if (prev === "offline") emit(f, { t: "notify", kind: "friend_online", name: u.username });
+  });
+}
+function openEvents(req, res, me) {
+  res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+  const c = { res, cid: crypto.randomBytes(6).toString("hex"), st: "online" };
+  if (!conns.has(me.id)) conns.set(me.id, new Set());
+  conns.get(me.id).add(c);
+  clearTimeout(offTimers.get(me.id)); offTimers.delete(me.id);
+  res.write("retry: 3000\n\n");
+  res.write("data: " + JSON.stringify({ t: "hello", cid: c.cid }) + "\n\n");
+  refreshPresence(me).catch(() => {});
+  req.on("close", () => {
+    const s = conns.get(me.id);
+    if (s) { s.delete(c); if (!s.size) conns.delete(me.id); }
+    if (conns.has(me.id)) return void refreshPresence(me).catch(() => {});
+    // wait a few seconds so a page refresh does not look like going offline
+    clearTimeout(offTimers.get(me.id));
+    offTimers.set(me.id, setTimeout(() => {
+      offTimers.delete(me.id);
+      pool.query("UPDATE users SET last_seen = now() WHERE id = $1", [me.id]).catch(() => {});
+      refreshPresence(me).catch(() => {});
+    }, 6000));
+  });
+}
+const userByPid = async pid => (await pool.query("SELECT id, player_id, username FROM users WHERE player_id = $1", [pid])).rows[0];
+const pairRow = async (a, b) => (await pool.query("SELECT * FROM friendships WHERE (requester = $1 AND addressee = $2) OR (requester = $2 AND addressee = $1)", [a, b])).rows[0];
+async function notify(userId, type, data) {
+  await pool.query("INSERT INTO notifications(user_id, type, data) VALUES ($1, $2, $3)", [userId, type, data]);
+  emit(userId, { t: "notify", kind: type, name: data.username });
+  emit(userId, { t: "friends_changed" });
+}
+async function friendsList(me) {
+  const r = await pool.query(`SELECT f.status, f.requester, u.id AS uid, u.player_id, u.username, (u.avatar IS NOT NULL) AS av, u.last_seen
+    FROM friendships f JOIN users u ON u.id = CASE WHEN f.requester = $1 THEN f.addressee ELSE f.requester END
+    WHERE f.requester = $1 OR f.addressee = $1 ORDER BY u.username`, [me.id]);
+  const out = { friends: [], incoming: [], outgoing: [], blocked: [] };
+  r.rows.forEach(x => {
+    const o = { id: x.player_id, username: x.username, av: x.av };
+    if (x.status === "accepted") out.friends.push(Object.assign(o, { status: statusOf(x.uid), seen: x.last_seen }));
+    else if (x.status === "pending") (x.requester === me.id ? out.outgoing : out.incoming).push(o);
+    else if (x.status === "blocked" && x.requester === me.id) out.blocked.push(o);
+  });
+  return out;
+}
+async function notifList(id) {
+  const r = await pool.query("SELECT type, data, read, created_at FROM notifications WHERE user_id = $1 ORDER BY id DESC LIMIT 30", [id]);
+  const n = await pool.query("SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND NOT read", [id]);
+  return { items: r.rows.map(x => ({ type: x.type, name: x.data.username, read: x.read, at: x.created_at })), unread: n.rows[0].n };
+}
+
 /* ---------- routes ---------- */
 async function route(req, res, u) {
   const p = u.pathname;
@@ -154,6 +253,37 @@ async function route(req, res, u) {
     if (req.method === "GET" && p === "/api/me") {
       const me = await authUser(req);
       return json(res, 200, { enabled: true, user: me ? pub(me) : null, stats: me ? await stats(me.id) : null });
+    }
+    if (req.method === "GET" && p.startsWith("/api/me/")) {
+      const me = await authUser(req);
+      if (!me) return json(res, 401, { error: "Please sign in" });
+      if (p === "/api/me/events") return openEvents(req, res, me);
+      if (p === "/api/me/friends") return json(res, 200, await friendsList(me));
+      if (p === "/api/me/notifications") return json(res, 200, await notifList(me.id));
+      if (p === "/api/me/friends/search") {
+        const raw = (u.searchParams.get("q") || "").trim().slice(0, 24);
+        if (raw.length < 2) return json(res, 200, { results: [] });
+        const byId = /^pn-\d{6}$/i.test(raw);
+        const r = await pool.query("SELECT id, player_id, username, (avatar IS NOT NULL) AS av FROM users WHERE " + (byId ? "player_id = $1" : "username ILIKE $1") +
+          " AND id <> $2 AND NOT EXISTS (SELECT 1 FROM friendships f WHERE f.status = 'blocked' AND f.requester = users.id AND f.addressee = $2) ORDER BY username LIMIT 10",
+          [byId ? raw.toUpperCase() : raw.replace(/[\\%_]/g, "\\$&") + "%", me.id]);
+        const ids = r.rows.map(x => x.id);
+        const fr = ids.length ? (await pool.query("SELECT requester, addressee, status FROM friendships WHERE (requester = $1 AND addressee = ANY($2)) OR (addressee = $1 AND requester = ANY($2))", [me.id, ids])).rows : [];
+        return json(res, 200, { results: r.rows.map(x => {
+          const f = fr.find(y => y.requester === x.id || y.addressee === x.id);
+          const rel = !f ? "none" : f.status === "accepted" ? "friend" : f.status === "pending" ? (f.requester === me.id ? "pending_out" : "pending_in") : "blocked";
+          return { id: x.player_id, username: x.username, av: x.av, rel };
+        }) });
+      }
+      const am = p.match(/^\/api\/me\/avatar\/(PN-\d{6})$/);
+      if (am) {
+        const r = await pool.query("SELECT avatar FROM users WHERE player_id = $1", [am[1]]);
+        const m = r.rows[0] && r.rows[0].avatar && r.rows[0].avatar.match(/^data:(image\/\w+);base64,(.*)$/);
+        if (!m) { res.writeHead(404); return res.end(); }
+        res.writeHead(200, { "Content-Type": m[1], "Cache-Control": "private, max-age=300", "X-Content-Type-Options": "nosniff" });
+        return res.end(Buffer.from(m[2], "base64"));
+      }
+      return json(res, 404, { error: "Not found" });
     }
     if (req.method !== "POST") return json(res, 405, { error: "Method not allowed" });
     if (!/json/.test(req.headers["content-type"] || "")) return json(res, 415, { error: "Bad request" });
@@ -234,6 +364,69 @@ async function route(req, res, u) {
     const me = await authUser(req);
     if (!me) return json(res, 401, { error: "Please sign in" });
 
+    if (p === "/api/me/presence") {
+      const st = ["online", "away", "game"].includes(b.status) ? b.status : "online";
+      const set = conns.get(me.id);
+      if (set) for (const c of set) if (c.cid === b.cid) c.st = st;
+      await refreshPresence(me);
+      return json(res, 200, { ok: true });
+    }
+    if (p === "/api/me/notifications/read") {
+      await pool.query("UPDATE notifications SET read = true WHERE user_id = $1 AND NOT read", [me.id]);
+      return json(res, 200, { ok: true });
+    }
+    const fm = p.match(/^\/api\/me\/friends\/(request|accept|reject|cancel|remove|block|unblock)$/);
+    if (fm) {
+      if (limited(req, "soc", 60, 60000)) return json(res, 429, { error: "Slow down a little" });
+      const t = await userByPid(String(b.id || ""));
+      if (!t || t.id === me.id) return json(res, 404, { error: "Player not found" });
+      const row = await pairRow(me.id, t.id), act = fm[1];
+      const changed = () => { emit(me.id, { t: "friends_changed" }); emit(t.id, { t: "friends_changed" }); };
+      const drop = () => pool.query("DELETE FROM friendships WHERE id = $1", [row.id]);
+      const accept = async () => {
+        await pool.query("UPDATE friendships SET status = 'accepted' WHERE id = $1", [row.id]);
+        await notify(t.id, "friend_accepted", { from: me.player_id, username: me.username });
+        changed();
+      };
+      if (act === "request") {
+        if (row) {
+          if (row.status === "pending" && row.requester === t.id) { await accept(); return json(res, 200, { ok: true, state: "friend" }); }
+          if (row.status === "accepted") return json(res, 409, { error: "You are already friends" });
+          if (row.status === "pending") return json(res, 409, { error: "Request already sent" });
+          return json(res, 403, { error: "You can’t send a request to this player" });
+        }
+        await pool.query("INSERT INTO friendships(requester, addressee, status) VALUES ($1, $2, 'pending')", [me.id, t.id]);
+        await notify(t.id, "friend_request", { from: me.player_id, username: me.username });
+        changed();
+        return json(res, 200, { ok: true, state: "pending" });
+      }
+      if (act === "accept") {
+        if (!row || row.status !== "pending" || row.addressee !== me.id) return json(res, 404, { error: "No such request" });
+        await accept(); return json(res, 200, { ok: true });
+      }
+      if (act === "reject") {
+        if (!row || row.status !== "pending" || row.addressee !== me.id) return json(res, 404, { error: "No such request" });
+        await drop(); changed(); return json(res, 200, { ok: true });
+      }
+      if (act === "cancel") {
+        if (!row || row.status !== "pending" || row.requester !== me.id) return json(res, 404, { error: "No such request" });
+        await drop(); changed(); return json(res, 200, { ok: true });
+      }
+      if (act === "remove") {
+        if (!row || row.status !== "accepted") return json(res, 404, { error: "You are not friends" });
+        await drop(); changed(); return json(res, 200, { ok: true });
+      }
+      if (act === "block") {
+        if (row) await drop();
+        await pool.query("INSERT INTO friendships(requester, addressee, status) VALUES ($1, $2, 'blocked')", [me.id, t.id]);
+        changed(); return json(res, 200, { ok: true });
+      }
+      if (act === "unblock") {
+        if (!row || row.status !== "blocked" || row.requester !== me.id) return json(res, 404, { error: "Player is not blocked" });
+        await drop(); changed(); return json(res, 200, { ok: true });
+      }
+    }
+
     if (p === "/api/me/update") {
       const sets = [], vals = [];
       if (b.username !== undefined && b.username !== me.username) {
@@ -285,4 +478,4 @@ async function route(req, res, u) {
   }
 }
 
-module.exports = { init, route, _test: { hashPw, checkPw } };
+module.exports = { init, route, _test: { hashPw, checkPw, openEvents, refreshPresence, statusOf, conns, setPool: x => { pool = x; } } };

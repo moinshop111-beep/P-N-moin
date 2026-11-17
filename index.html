@@ -148,6 +148,17 @@ tr.new{animation:rowin .4s}
 .amsg{min-height:20px;font-size:14px;margin:-2px 0 10px;color:var(--bad)}
 .avl{display:block;text-align:left;color:var(--dim);font-size:13px;margin-bottom:10px}
 .avl input{margin-top:6px;width:100%;color:var(--dim)}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
+.tabs button{padding:10px 2px;border-radius:12px;background:var(--panel);border:2px solid var(--line);font-weight:700;font-size:13px}
+.tabs button.sel{border-color:var(--purple);background:var(--panel2);box-shadow:0 0 14px rgba(168,85,247,.4)}
+.badge{display:inline-block;min-width:18px;padding:1px 5px;margin-left:5px;border-radius:9px;background:var(--pink);color:#07071a;font-size:11px;font-weight:900;text-align:center}
+.frow{display:flex;align-items:center;gap:10px;padding:10px;margin-bottom:8px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.frow.unread{border-color:var(--blue)}
+.fi{flex:1;min-width:0}.fi b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fi small{color:var(--dim);font-size:12px}
+.sbtn{padding:8px 10px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font-size:12px;font-weight:700;white-space:nowrap}
+.sbtn.bad{color:var(--bad);border-color:rgba(255,85,119,.5)}.sbtn.ok{color:var(--good);border-color:rgba(55,255,176,.5)}
+.sec{color:var(--dim);font-size:13px;margin:14px 0 8px}
+.fsearch{margin-bottom:10px}.fsearch .fld{margin:0}
 .codeIn{width:100%;margin:0 0 14px;padding:14px;border-radius:14px;border:2px solid var(--line);background:var(--bg);color:var(--blue);font:900 30px var(--font);text-align:center;letter-spacing:.4em;user-select:text}
 .codeIn:focus{outline:none;border-color:var(--blue);box-shadow:0 0 16px rgba(45,226,255,.4)}
 #hist2Wrap{margin-top:12px}
@@ -182,6 +193,7 @@ tr.new{animation:rowin .4s}
     <div style="height:20px"></div>
     <button class="cta" id="startBtn">START GAME</button>
     <button class="ghost" id="scoreBtn">🏆 Scoreboard</button>
+    <button class="ghost" id="friendsBtn">👥 Friends <span class="badge hidden" id="fbadge"></span></button>
     <div class="rules">
       <b>Rules:</b> the code has 3 different digits and never starts with 0.<br>
       Example: secret <i>675</i>, guess <i>476</i> gives <i>P=1</i> (the 7 is in the right position) and <i>N=2</i> (7 and 6 both exist in the secret). N counts every shared digit, so P can never be bigger than N.
@@ -213,6 +225,16 @@ tr.new{animation:rowin .4s}
       <button id="restartBtn">🔄 Restart</button>
       <button id="giveBtn" class="danger">🏳️ Give Up</button>
     </div>
+  </section>
+  <!-- FRIENDS -->
+  <section id="friends" class="screen hidden">
+    <div class="tabs" id="ftabs">
+      <button data-t="friends" class="sel">Friends</button>
+      <button data-t="requests">Requests<span class="badge hidden" id="rbadge"></span></button>
+      <button data-t="find">Find</button>
+      <button data-t="alerts">Alerts<span class="badge hidden" id="abadge"></span></button>
+    </div>
+    <div id="fpanel"></div>
   </section>
   <footer class="credit">Created by <b>MOIN</b></footer>
 </div>
@@ -380,7 +402,9 @@ tr.new{animation:rowin .4s}
   function show(screen) {
     $("#menu").classList.toggle("hidden", screen !== "menu");
     $("#game").classList.toggle("hidden", screen !== "game");
+    $("#friends").classList.toggle("hidden", screen !== "friends");
     $("#homeBtn").style.visibility = screen === "menu" ? "hidden" : "visible";
+    sendPresence();
   }
 
   /* ---------- Input ---------- */
@@ -574,6 +598,7 @@ tr.new{animation:rowin .4s}
     n.classList.toggle("off", !netOk); n.classList.toggle("on", netOk);
     n.querySelector("span").textContent = netOk ? "Online" : "Offline · local games still work";
     document.querySelector('.mode[data-mode="online"]').classList.toggle("disabled", !netOk);
+    if (friendsOpen()) renderTab();
   }
   async function checkNet(announce) {
     let ok = navigator.onLine;
@@ -652,6 +677,8 @@ tr.new{animation:rowin .4s}
     b.innerHTML = A.user
       ? avatarHTML(A.user, 40) + `<span><b>${esc(A.user.username)}</b><small>Tap to open your profile</small></span>`
       : '<span class="av">👤</span><span><b>Guest</b><small>Sign in to keep your progress on every device</small></span>';
+    $("#friendsBtn").classList.toggle("hidden", A.enabled === false);
+    if (A.user) socConnect(); else socClose();
   }
   $("#acctBtn").onclick = () => {
     if (!netOk) return toast("Signing in needs an internet connection");
@@ -772,6 +799,132 @@ tr.new{animation:rowin .4s}
         A.user = null; A.stats = null; paintAcct(); closeModal(); toast("Account deleted", true);
       } }, { label: "Keep my account", ghost: true, keep: true, fn: profile }] });
   }
+
+  /* ---------- Friends, presence and alerts ---------- */
+  const SOC = { es: null, cid: null, data: null, tab: "friends", alerts: [], unread: 0 };
+  const DOT = { online: "🟢", away: "🟡", game: "🎮", offline: "🔴" };
+  const LABEL = { online: "Online", away: "Away", game: "In game", offline: "Offline" };
+  const ago = t => {
+    const s = Math.max(1, Math.round((Date.now() - new Date(t)) / 1000));
+    return s < 60 ? "just now" : s < 3600 ? Math.round(s / 60) + " min ago" : s < 86400 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " d ago";
+  };
+  const pav = p => p.av
+    ? `<img class="av" style="width:44px;height:44px" src="/api/me/avatar/${esc(p.id)}" alt="">`
+    : `<span class="av" style="width:44px;height:44px;font-size:20px">${esc(p.username[0].toUpperCase())}</span>`;
+  const friendsOpen = () => !$("#friends").classList.contains("hidden");
+
+  function socConnect() {
+    if (SOC.es || !A.user || !netOk) return;
+    SOC.es = new EventSource("/api/me/events");
+    SOC.es.onmessage = e => {
+      const m = JSON.parse(e.data);
+      if (m.t === "hello") { SOC.cid = m.cid; sendPresence(); socRefresh(); }
+      else if (m.t === "presence") {
+        const f = SOC.data && SOC.data.friends.find(x => x.id === m.id);
+        if (f) { f.status = m.status; f.seen = m.seen; if (friendsOpen() && SOC.tab === "friends") renderTab(); }
+      } else if (m.t === "friends_changed") socRefresh();
+      else if (m.t === "notify") {
+        const txt = { friend_request: " sent you a friend request", friend_accepted: " accepted your friend request", friend_online: " is online" }[m.kind];
+        if (txt) { toast(m.name + txt, true); sfx.tap(); }
+      }
+    };
+    SOC.es.onerror = () => { if (SOC.es && SOC.es.readyState === 2) socClose(); };
+  }
+  function socClose() {
+    if (SOC.es) SOC.es.close();
+    SOC.es = null; SOC.cid = null; SOC.data = null; SOC.alerts = []; SOC.unread = 0;
+    paintBadges(); if (friendsOpen()) goMenu();
+  }
+  let presT = null;
+  function sendPresence() {
+    clearTimeout(presT);
+    presT = setTimeout(() => {
+      if (!A.user || !SOC.cid || !netOk) return;
+      const st = document.hidden ? "away" : !$("#game").classList.contains("hidden") ? "game" : "online";
+      acall("POST", "me/presence", { cid: SOC.cid, status: st });
+    }, 300);
+  }
+  document.addEventListener("visibilitychange", sendPresence);
+
+  function paintBadges() {
+    const req = SOC.data ? SOC.data.incoming.length : 0;
+    const set = (id, n) => { const e = $(id); e.textContent = n; e.classList.toggle("hidden", !n); };
+    set("#rbadge", req); set("#abadge", SOC.unread); set("#fbadge", Math.max(req, SOC.unread));
+  }
+  async function socRefresh() {
+    if (!A.user || !netOk) return;
+    const [f, n] = await Promise.all([acall("GET", "me/friends"), acall("GET", "me/notifications")]);
+    if (!f.error) SOC.data = f;
+    if (!n.error) { SOC.alerts = n.items; SOC.unread = n.unread; }
+    paintBadges(); if (friendsOpen()) renderTab();
+  }
+  const prow = (p, sub, btns) => `<div class="frow">${pav(p)}<div class="fi"><b>${esc(p.username)}</b><small>${sub}</small></div>${btns}</div>`;
+  const sb = (a, id, label, cls = "") => `<button class="sbtn ${cls}" data-a="${a}" data-id="${esc(id)}">${label}</button>`;
+  function renderTab() {
+    const d = SOC.data, p = $("#fpanel");
+    document.querySelectorAll("#ftabs button").forEach(b => b.classList.toggle("sel", b.dataset.t === SOC.tab));
+    if (!netOk) { p.innerHTML = '<div class="empty">You’re offline. Friends need an internet connection.</div>'; return; }
+    if (!d) { p.innerHTML = '<div class="empty">Loading…</div>'; return; }
+    if (SOC.tab === "friends") {
+      const order = { game: 0, online: 1, away: 2, offline: 3 };
+      const fs = d.friends.slice().sort((a, b) => order[a.status] - order[b.status] || a.username.localeCompare(b.username));
+      const on = fs.filter(f => f.status !== "offline").length;
+      p.innerHTML = fs.length
+        ? `<div class="sec">${on} online · ${fs.length} friend${fs.length === 1 ? "" : "s"}</div>` + fs.map(f =>
+            prow(f, DOT[f.status] + " " + LABEL[f.status] + (f.status === "offline" ? " · last seen " + ago(f.seen) : ""), sb("remove", f.id, "Remove") + sb("block", f.id, "Block", "bad"))).join("")
+        : '<div class="empty">No friends yet. Use Find to search by username or Player ID.</div>';
+    } else if (SOC.tab === "requests") {
+      let h = "";
+      if (d.incoming.length) h += '<div class="sec">Received</div>' + d.incoming.map(x => prow(x, "wants to be your friend", sb("accept", x.id, "Accept", "ok") + sb("reject", x.id, "Reject", "bad"))).join("");
+      if (d.outgoing.length) h += '<div class="sec">Sent</div>' + d.outgoing.map(x => prow(x, "waiting for a reply", sb("cancel", x.id, "Cancel"))).join("");
+      if (d.blocked.length) h += '<div class="sec">Blocked</div>' + d.blocked.map(x => prow(x, "blocked", sb("unblock", x.id, "Unblock"))).join("");
+      p.innerHTML = h || '<div class="empty">No pending requests.</div>';
+    } else if (SOC.tab === "find") {
+      if (!$("#fq")) p.innerHTML = '<div class="fsearch"><input id="fq" class="fld" placeholder="Username or Player ID (PN-123456)" autocomplete="off" autocapitalize="off"></div><div id="fres"><div class="empty">Type at least 2 letters.</div></div>';
+    } else {
+      p.innerHTML = (SOC.alerts.length ? SOC.alerts.map(x => `<div class="frow ${x.read ? "" : "unread"}"><div class="fi"><b>${esc(x.name)}${x.type === "friend_request" ? " sent you a friend request" : " accepted your friend request"}</b><small>${ago(x.at)}</small></div></div>`).join("") : '<div class="empty">No alerts yet.</div>');
+    }
+  }
+  let findT = null;
+  async function doSearch() {
+    const q = ($("#fq") ? $("#fq").value : "").trim(), box = $("#fres");
+    if (!box) return;
+    if (q.length < 2) { box.innerHTML = '<div class="empty">Type at least 2 letters.</div>'; return; }
+    const r = await acall("GET", "me/friends/search?q=" + encodeURIComponent(q));
+    if (r.error) { box.innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
+    box.innerHTML = r.results.length ? r.results.map(x => prow(x, esc(x.id),
+      x.rel === "none" ? sb("request", x.id, "Add friend", "ok") : x.rel === "pending_in" ? sb("accept", x.id, "Accept", "ok") :
+      x.rel === "pending_out" ? sb("cancel", x.id, "Cancel request") : x.rel === "friend" ? "<small>Friends ✓</small>" : "<small>Blocked</small>")).join("")
+      : '<div class="empty">No players found.</div>';
+  }
+  async function friendAct(a, id) {
+    const r = await acall("POST", "me/friends/" + a, { id });
+    if (r.error) { sfx.err(); toast(r.error); } else sfx.tap();
+    await socRefresh(); if (SOC.tab === "find") doSearch();
+  }
+  $("#fpanel").addEventListener("input", e => { if (e.target.id === "fq") { clearTimeout(findT); findT = setTimeout(doSearch, 350); } });
+  $("#fpanel").addEventListener("click", e => {
+    const b = e.target.closest("button[data-a]");
+    if (!b) return;
+    const a = b.dataset.a, id = b.dataset.id;
+    if (a === "remove" || a === "block")
+      return showModal({ icon: a === "remove" ? "💔" : "⛔", title: a === "remove" ? "Remove friend?" : "Block this player?",
+        body: "<p>" + (a === "remove" ? "You will no longer see each other’s status." : "They won’t be able to send you requests, and any friendship ends.") + "</p>",
+        actions: [{ label: a === "remove" ? "REMOVE" : "BLOCK", fn: () => friendAct(a, id) }, { label: "Cancel", ghost: true }] });
+    friendAct(a, id);
+  });
+  $("#ftabs").addEventListener("click", e => {
+    const b = e.target.closest("button[data-t]");
+    if (!b) return;
+    SOC.tab = b.dataset.t; renderTab(); sfx.tap();
+    if (SOC.tab === "alerts" && SOC.unread) acall("POST", "me/notifications/read", {}).then(() => { SOC.unread = 0; paintBadges(); });
+  });
+  $("#friendsBtn").onclick = () => {
+    sfx.tap();
+    if (!netOk) return toast("Friends need an internet connection");
+    if (!A.user) return loginForm();
+    SOC.tab = "friends"; show("friends"); renderTab(); socRefresh();
+  };
 
   /* ---------- Online duel ---------- */
   const O = { room: null, pid: 0, tok: "", st: null, es: null, shown: false, cnt: 0 };
