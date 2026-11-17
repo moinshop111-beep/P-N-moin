@@ -1,5 +1,6 @@
 // P&N online duel server. No dependencies. Run: node server.js
 const http = require("http"), fs = require("fs"), path = require("path"), crypto = require("crypto");
+const auth = require("./auth");
 const PORT = process.env.PORT || 3000, rooms = new Map();
 
 const valid = s => typeof s === "string" && /^[1-9]\d\d$/.test(s) && new Set(s).size === 3;
@@ -72,6 +73,7 @@ const STATIC = {
 
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, "http://x");
+  if (u.pathname.startsWith("/api/auth/") || u.pathname.startsWith("/api/me") || u.pathname === "/api/sync") return auth.route(req, res, u);
   if (req.method === "GET" && u.pathname === "/api/ping") {
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }); return res.end('{"ok":1}');
   }
@@ -125,4 +127,5 @@ setInterval(() => {
   rooms.forEach((r, k) => { if (now - r.t > 3 * 3600e3) rooms.delete(k); r.clients.forEach(s => s.forEach(c => c.write(": ping\n\n"))); });
 }, 25000);
 
+auth.init();
 server.listen(PORT, () => console.log("P&N server running on http://localhost:" + PORT));
