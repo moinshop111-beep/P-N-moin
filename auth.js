@@ -242,6 +242,20 @@ async function notifList(id) {
   return { items: r.rows.map(x => ({ type: x.type, name: x.data.username, read: x.read, at: x.created_at })), unread: n.rows[0].n };
 }
 
+/* ---------- helpers used by the match server ---------- */
+const userFromReq = async req => { if (!ready) return null; try { return await authUser(req); } catch (e) { return null; } };
+const isOnline = id => !!(conns.get(id) && conns.get(id).size);
+const friendUser = async (meId, pid) => {
+  if (!ready) return null;
+  const r = await pool.query("SELECT u.id, u.username FROM users u JOIN friendships f ON f.status = 'accepted' AND ((f.requester = $1 AND f.addressee = u.id) OR (f.addressee = $1 AND f.requester = u.id)) WHERE u.player_id = $2", [meId, pid]);
+  return r.rows[0] || null;
+};
+const recordMatch = (userId, cid, won, attempts) => {
+  if (!ready) return;
+  pool.query("INSERT INTO games(user_id, cid, mode, diff, won, attempts, source) VALUES ($1, $2, 'online', 'online', $3, $4, 'verified') ON CONFLICT (user_id, cid) DO NOTHING", [userId, cid, won, attempts])
+    .catch(e => console.log("recordMatch:", e.message));
+};
+
 /* ---------- routes ---------- */
 async function route(req, res, u) {
   const p = u.pathname;
@@ -478,4 +492,4 @@ async function route(req, res, u) {
   }
 }
 
-module.exports = { init, route, _test: { hashPw, checkPw, openEvents, refreshPresence, statusOf, conns, setPool: x => { pool = x; } } };
+module.exports = { init, route, userFromReq, isOnline, emitTo: emit, friendUser, recordMatch, _test: { hashPw, checkPw, openEvents, refreshPresence, statusOf, conns, setPool: x => { pool = x; } } };

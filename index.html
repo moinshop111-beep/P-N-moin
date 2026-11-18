@@ -159,6 +159,11 @@ tr.new{animation:rowin .4s}
 .sbtn.bad{color:var(--bad);border-color:rgba(255,85,119,.5)}.sbtn.ok{color:var(--good);border-color:rgba(55,255,176,.5)}
 .sec{color:var(--dim);font-size:13px;margin:14px 0 8px}
 .fsearch{margin-bottom:10px}.fsearch .fld{margin:0}
+.live{text-align:center;font-size:13px;color:var(--dim);margin:-4px 0 10px}.live b{color:var(--text)}
+.chatlog{max-height:150px;overflow-y:auto;padding:8px 12px;font-size:14px;text-align:left}
+.chatlog div{padding:3px 0;word-break:break-word}.chatlog .me b{color:var(--blue)}.chatlog b{color:var(--pink)}
+.chatin{display:flex;gap:8px;padding:8px;border-top:1px solid var(--line)}.chatin .fld{margin:0;padding:10px 12px;font-size:15px}
+.fb{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .codeIn{width:100%;margin:0 0 14px;padding:14px;border-radius:14px;border:2px solid var(--line);background:var(--bg);color:var(--blue);font:900 30px var(--font);text-align:center;letter-spacing:.4em;user-select:text}
 .codeIn:focus{outline:none;border-color:var(--blue);box-shadow:0 0 16px rgba(45,226,255,.4)}
 #hist2Wrap{margin-top:12px}
@@ -208,6 +213,7 @@ tr.new{animation:rowin .4s}
       <div class="chip"><small>Level</small><b id="lvlStat">Easy</b></div>
     </div>
     <div id="prompt"></div>
+    <div id="liveScore" class="live hidden"></div>
     <div class="slots" id="slots"></div>
     <div class="res">
       <div class="rbox p" id="pBox"><span>POSITION (P)</span><strong id="pVal">–</strong></div>
@@ -220,6 +226,8 @@ tr.new{animation:rowin .4s}
       <div class="scroll" id="hist"></div>
     </div>
     <div class="hist hidden" id="hist2Wrap"><h2>Opponent’s guesses on you</h2><div class="scroll" id="hist2"></div></div>
+    <div class="hist hidden" id="chatBox"><h2>💬 Match chat</h2><div class="chatlog" id="chatLog"></div>
+      <div class="chatin"><input id="chatIn" class="fld" maxlength="200" placeholder="Write a message…" autocomplete="off"><button class="sbtn ok" id="chatSend">Send</button></div></div>
     <div class="acts">
       <button id="newBtn">🆕 New Game</button>
       <button id="restartBtn">🔄 Restart</button>
@@ -440,6 +448,7 @@ tr.new{animation:rowin .4s}
   }
   $("#submitBtn").onclick = submit;
   document.addEventListener("keydown", e => {
+    if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (S.phase === "menu" || modalOpen()) return;
     if (/^[0-9]$/.test(e.key)) press(e.key);
     else if (e.key === "Backspace") press("⌫");
@@ -456,7 +465,7 @@ tr.new{animation:rowin .4s}
       if (b === null || n < b) st.best[k] = n;
     } else st.losses++;
     saveStats(st);
-    idbAddGame({ cid: uid(), ts: Date.now(), mode: S.mode, diff: S.mode === "online" ? "online" : S.diff, won, attempts: S.guesses.length, secret: S.secret, synced: false }).then(() => syncGames());
+    idbAddGame({ cid: uid(), ts: Date.now(), mode: S.mode, diff: S.mode === "online" ? "online" : S.diff, won, attempts: S.guesses.length, secret: S.secret, synced: S.mode === "online" && !!A.user }).then(() => syncGames());
   }
   function win() {
     record(true); sfx.win(); confetti();
@@ -823,6 +832,10 @@ tr.new{animation:rowin .4s}
         const f = SOC.data && SOC.data.friends.find(x => x.id === m.id);
         if (f) { f.status = m.status; f.seen = m.seen; if (friendsOpen() && SOC.tab === "friends") renderTab(); }
       } else if (m.t === "friends_changed") socRefresh();
+      else if (m.t === "invite") showInvite(m);
+      else if (m.t === "match_found") { closeModal(); if (!O.room) startRoom(m); }
+      else if (m.t === "match_timeout") { closeModal(); toast("No opponent found. Try again."); }
+      else if (m.t === "invite_rejected") toast(m.name + " declined your invitation");
       else if (m.t === "notify") {
         const txt = { friend_request: " sent you a friend request", friend_accepted: " accepted your friend request", friend_online: " is online" }[m.kind];
         if (txt) { toast(m.name + txt, true); sfx.tap(); }
@@ -858,7 +871,7 @@ tr.new{animation:rowin .4s}
     if (!n.error) { SOC.alerts = n.items; SOC.unread = n.unread; }
     paintBadges(); if (friendsOpen()) renderTab();
   }
-  const prow = (p, sub, btns) => `<div class="frow">${pav(p)}<div class="fi"><b>${esc(p.username)}</b><small>${sub}</small></div>${btns}</div>`;
+  const prow = (p, sub, btns) => `<div class="frow">${pav(p)}<div class="fi"><b>${esc(p.username)}</b><small>${sub}</small></div><div class="fb">${btns}</div></div>`;
   const sb = (a, id, label, cls = "") => `<button class="sbtn ${cls}" data-a="${a}" data-id="${esc(id)}">${label}</button>`;
   function renderTab() {
     const d = SOC.data, p = $("#fpanel");
@@ -871,7 +884,7 @@ tr.new{animation:rowin .4s}
       const on = fs.filter(f => f.status !== "offline").length;
       p.innerHTML = fs.length
         ? `<div class="sec">${on} online · ${fs.length} friend${fs.length === 1 ? "" : "s"}</div>` + fs.map(f =>
-            prow(f, DOT[f.status] + " " + LABEL[f.status] + (f.status === "offline" ? " · last seen " + ago(f.seen) : ""), sb("remove", f.id, "Remove") + sb("block", f.id, "Block", "bad"))).join("")
+            prow(f, DOT[f.status] + " " + LABEL[f.status] + (f.status === "offline" ? " · last seen " + ago(f.seen) : ""), (f.status === "online" || f.status === "away" ? sb("invite", f.id, "Invite", "ok") : "") + sb("remove", f.id, "Remove") + sb("block", f.id, "Block", "bad"))).join("")
         : '<div class="empty">No friends yet. Use Find to search by username or Player ID.</div>';
     } else if (SOC.tab === "requests") {
       let h = "";
@@ -907,6 +920,7 @@ tr.new{animation:rowin .4s}
     const b = e.target.closest("button[data-a]");
     if (!b) return;
     const a = b.dataset.a, id = b.dataset.id;
+    if (a === "invite") return inviteFriend(id);
     if (a === "remove" || a === "block")
       return showModal({ icon: a === "remove" ? "💔" : "⛔", title: a === "remove" ? "Remove friend?" : "Block this player?",
         body: "<p>" + (a === "remove" ? "You will no longer see each other’s status." : "They won’t be able to send you requests, and any friendship ends.") + "</p>",
@@ -939,17 +953,19 @@ tr.new{animation:rowin .4s}
     if (location.protocol === "file:") return showModal({ icon: "🌐", title: "Server needed",
       body: "<p>Run <b>node server.js</b>, then open the game at the address it prints, for example http://localhost:3000</p>", actions: [{ label: "OK" }] });
     showModal({ icon: "🌐", title: "Online Duel",
-      body: '<p>Create a room and send the 4-digit code to your friend, or enter their code to join.</p><input id="codeIn" class="codeIn" maxlength="4" inputmode="numeric" placeholder="----" oninput="this.value=this.value.replace(/\\D/g,\'\')">',
-      actions: [{ label: "CREATE ROOM", fn: () => enterRoom() }, { label: "JOIN WITH CODE", ghost: true, fn: v => enterRoom(v) }, { label: "Cancel", ghost: true }] });
+      body: '<p>Create a room and share its code, join a public room, or enter a friend’s code.</p><input id="codeIn" class="codeIn" maxlength="4" inputmode="numeric" placeholder="----" oninput="this.value=this.value.replace(/\\D/g,\'\')">',
+      actions: [{ label: "CREATE PRIVATE ROOM", fn: () => enterRoom(undefined, "private") },
+        { label: "CREATE PUBLIC ROOM", ghost: true, fn: () => enterRoom(undefined, "public") },
+        { label: "JOIN WITH CODE", ghost: true, fn: v => enterRoom(v) },
+        { label: "PUBLIC ROOMS", ghost: true, keep: true, fn: publicRooms },
+        { label: "RANDOM OPPONENT", ghost: true, fn: randomMatch },
+        { label: "Cancel", ghost: true }] });
   }
-  async function enterRoom(code) {
+  async function enterRoom(code, vis) {
     if (code !== undefined && !/^\d{4}$/.test(code)) { sfx.err(); return toast("Enter the 4-digit room code"); }
-    const r = await api(code ? "join" : "create", { room: code || null });
+    const r = await api(code ? "join" : "create", { room: code || null, visibility: vis });
     if (r.error) { sfx.err(); return toast(r.error); }
-    Object.assign(O, { room: r.room, pid: r.pid, tok: r.tok, st: null, shown: false, cnt: 0 });
-    try { localStorage.setItem("pn_session", JSON.stringify({ room: r.room, pid: r.pid, tok: r.tok })); } catch (e) {}
-    S.cur = ""; S.guesses = []; S.over = false; S.phase = "play";
-    showResult(null); show("game"); render(); connect();
+    startRoom(r);
   }
   function connect() {
     if (O.es) O.es.close();
@@ -957,7 +973,7 @@ tr.new{animation:rowin .4s}
     O.es.onmessage = e => onlineApply(JSON.parse(e.data));
     O.es.onerror = () => { if (O.es && O.es.readyState === 2) { toast("Room not available any more. Start a new game."); if (!O.st) goMenu(); } };
   }
-  function onlineClose() { if (O.es) O.es.close(); O.es = null; O.room = null; O.st = null; try { localStorage.removeItem("pn_session"); } catch (e) {} }
+  function onlineClose() { if (O.room && O.tok) api("leave", {}); if (O.es) O.es.close(); O.es = null; O.room = null; O.st = null; try { localStorage.removeItem("pn_session"); } catch (e) {} }
   const canType = () => {
     const t = O.st;
     if (!t || t.phase === "over" || t.phase === "wait") return false;
@@ -971,18 +987,26 @@ tr.new{animation:rowin .4s}
     if (prev && prev.phase !== "setup" && t.phase === "setup") S.cur = "";
     if (t.mine.length !== O.cnt) { O.cnt = t.mine.length; showResult(t.mine[t.mine.length - 1] || null); }
     if (prev && t.phase === "play" && prev.turn !== t.me && t.turn === t.me) sfx.tap();
+    if (prev) {
+      if (!prev.joined[1 - t.me] && t.joined[1 - t.me]) { toast(t.names[1 - t.me] + " joined your room", true); sfx.tap(); }
+      if (prev.phase !== "play" && t.phase === "play") { toast("Match started!", true); sfx.send(); }
+      const lm = t.chat[t.chat.length - 1], pm = prev.chat[prev.chat.length - 1];
+      if (lm && lm.p !== t.me && (!pm || pm.ts !== lm.ts)) sfx.tap();
+    }
     if (t.phase !== "over" && O.shown) { O.shown = false; closeModal(); }
     render();
     if (t.phase === "over" && !O.shown) { O.shown = true; onlineEnd(t); }
   }
   function onlineEnd(t) {
-    const won = t.winner === t.me, draw = t.winner === "draw";
+    const won = t.winner === t.me, draw = t.winner === "draw", opp = esc(t.names[1 - t.me]);
     if (!draw) record(won);
     if (won) { sfx.win(); confetti(); } else if (draw) sfx.send(); else sfx.lose();
+    const why = t.reason === "left" ? (won ? opp + " left the match" : "You left the match") : t.reason === "timeout" ? (won ? opp + " was disconnected too long" : "You were disconnected too long") : "";
+    const sec = t.secrets ? `<p>Their secret code was</p><div class="code">${t.secrets[1 - t.me]}</div><p>Yours was <b>${t.secrets[t.me]}</b></p>` : "";
+    const acts = t.reason ? [{ label: "Main menu", fn: goMenu }] : [{ label: "REMATCH", fn: () => api("rematch", {}) }, { label: "Main menu", ghost: true, fn: goMenu }];
     showModal({ cls: won ? "win" : draw ? "" : "lose", icon: won ? "🏆" : draw ? "🤝" : "💥",
-      title: won ? "You cracked it first!" : draw ? "It’s a draw!" : "Your code was cracked",
-      body: `<p>Their secret code was</p><div class="code">${t.secrets[1 - t.me]}</div><p>Yours was <b>${t.secrets[t.me]}</b></p>`,
-      actions: [{ label: "REMATCH", fn: () => api("rematch", {}) }, { label: "Main menu", ghost: true, fn: goMenu }] });
+      title: won ? "You won!" : draw ? "It’s a draw!" : "You lost",
+      body: (why ? `<p>${why}</p>` : "") + sec + `<p>Score: <b>You ${t.wins[t.me]} – ${t.wins[1 - t.me]} ${opp}</b></p>`, actions: acts });
   }
   async function onlineSend(c) {
     const setup = S.phase === "setup";
@@ -990,12 +1014,65 @@ tr.new{animation:rowin .4s}
     if (r.error) return reject(r.error);
     S.cur = ""; sfx.send(); render();
   }
+  function startRoom(r) {
+    Object.assign(O, { room: r.room, pid: r.pid, tok: r.tok, st: null, shown: false, cnt: 0 });
+    try { localStorage.setItem("pn_session", JSON.stringify({ room: r.room, pid: r.pid, tok: r.tok })); } catch (e) {}
+    S.mode = "online";
+    document.querySelectorAll(".mode").forEach(x => x.classList.toggle("sel", x.dataset.mode === "online"));
+    S.cur = ""; S.guesses = []; S.over = false; S.phase = "play";
+    showResult(null); show("game"); render(); connect();
+  }
+  async function publicRooms() {
+    const r = await acall("GET", "rooms");
+    const rows = r.rooms && r.rooms.length ? r.rooms.map(x => `<div class="frow"><div class="fi"><b>${esc(x.host)}</b><small>Room ${esc(x.code)} · ${ago(Date.now() - x.age)}</small></div><button class="sbtn ok" data-join="${esc(x.code)}">Join</button></div>`).join("")
+      : '<div class="empty">No public rooms right now. Create one!</div>';
+    showModal({ icon: "🌍", title: "Public rooms", body: '<div style="text-align:left">' + rows + "</div>",
+      actions: [{ label: "Refresh", keep: true, fn: publicRooms }, { label: "Back", ghost: true, keep: true, fn: onlineLobby }] });
+  }
+  async function randomMatch() {
+    if (!A.user) { toast("Sign in to find a random opponent"); return loginForm(); }
+    const r = await api("random", {});
+    if (r.error) { sfx.err(); return toast(r.error); }
+    if (r.room) return startRoom(r);
+    showModal({ icon: "🔎", title: "Looking for an opponent…", body: "<p>Keep this screen open. We’ll start the match as soon as another player is found (up to 2 minutes).</p>",
+      actions: [{ label: "Cancel search", ghost: true, fn: () => api("random_cancel", {}) }] });
+  }
+  async function inviteFriend(id) {
+    if (!netOk) return toast("Inviting needs an internet connection");
+    const r = await api("invite", { id });
+    if (r.error) { sfx.err(); return toast(r.error); }
+    toast("Invitation sent to " + r.name, true);
+    if (!O.room) startRoom(r);
+  }
+  function showInvite(m) {
+    sfx.win();
+    showModal({ icon: "🎮", title: "Game invitation", body: `<p><b>${esc(m.from)}</b> invites you to play P&amp;N.</p>`,
+      actions: [{ label: "ACCEPT", fn: async () => {
+          if (O.room) goMenu();
+          const r = await api("invite_accept", { invite: m.id, room: null, tok: null });
+          if (r.error) { sfx.err(); toast(r.error); } else startRoom(r);
+        } }, { label: "Decline", ghost: true, fn: () => api("invite_reject", { invite: m.id, room: null, tok: null }) }] });
+  }
+  async function sendChat() {
+    const i = $("#chatIn"), x = i.value.trim();
+    if (!x) return;
+    i.value = "";
+    const r = await api("chat", { text: x });
+    if (r.error) toast(r.error);
+  }
+  $("#chatSend").onclick = sendChat;
+  $("#chatIn").addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });
+  $("#modal").addEventListener("click", e => {
+    const b = e.target.closest("[data-join]");
+    if (b) { closeModal(); enterRoom(b.dataset.join); }
+  });
   const rows2 = l => l.length
     ? '<table><thead><tr><th>#</th><th>Guess</th><th>P</th><th>N</th></tr></thead><tbody>' +
       l.map((g, i) => `<tr><td>${i + 1}</td><td class="g">${g.guess}</td><td class="pp">${g.p}</td><td class="nn">${g.n}</td></tr>`).reverse().join("") + "</tbody></table>"
     : '<div class="empty">Nothing yet.</div>';
   function onlineTweaks() {
     const t = S.mode === "online" && O.st;
+    $("#liveScore").classList.toggle("hidden", !t); $("#chatBox").classList.toggle("hidden", !t);
     $("#newBtn").classList.toggle("hidden", !!t);
     $("#giveBtn").textContent = t ? "🚪 Leave room" : "🏳️ Give Up";
     $("#histWrap h2").textContent = t ? "Your guesses" : "Game history";
@@ -1014,6 +1091,11 @@ tr.new{animation:rowin .4s}
       t.turn === me ? (lastOpp && lastOpp.p === 3 ? "Last chance! They cracked your code" : "Your turn: guess their code") : "Opponent is guessing…") +
       (t.phase !== "over" && t.joined[1 - me] && !t.online[1 - me] ? " ⚠️ Opponent offline" : "");
     $("#hist2").innerHTML = rows2(t.theirs);
+    const opp = esc(t.names[1 - me]);
+    $("#liveScore").innerHTML = `🏆 You <b>${t.wins[me]}</b> – <b>${t.wins[1 - me]}</b> ${opp}` + (t.phase === "play" ? ` · ${opp} has made <b>${t.theirs.length}</b> guess${t.theirs.length === 1 ? "" : "es"}` : "");
+    const log = $("#chatLog"), atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+    log.innerHTML = t.chat.length ? t.chat.map(m => `<div class="${m.p === me ? "me" : ""}"><b>${esc(m.n)}:</b> ${esc(m.x)}</div>`).join("") : '<div style="color:var(--dim)">Say hi 👋</div>';
+    if (atEnd) log.scrollTop = log.scrollHeight;
   }
 
   /* ---------- Init ---------- */
