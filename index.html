@@ -164,6 +164,24 @@ tr.new{animation:rowin .4s}
 .chatlog div{padding:3px 0;word-break:break-word}.chatlog .me b{color:var(--blue)}.chatlog b{color:var(--pink)}
 .chatin{display:flex;gap:8px;padding:8px;border-top:1px solid var(--line)}.chatin .fld{margin:0;padding:10px 12px;font-size:15px}
 .fb{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+#app{padding-bottom:96px}
+.nav{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:480px;display:grid;grid-template-columns:repeat(7,1fr);background:rgba(16,16,43,.97);border-top:1px solid var(--line);padding:6px 2px calc(6px + env(safe-area-inset-bottom));z-index:12;backdrop-filter:blur(8px)}
+.nav button{display:flex;flex-direction:column;align-items:center;gap:1px;font-size:10px;color:var(--dim);padding:3px 0;position:relative}
+.nav button i{font-style:normal;font-size:19px}
+.nav button.sel{color:var(--blue)}
+.nav .badge{position:absolute;top:-3px;right:4px;margin:0;font-size:9px;min-width:15px;padding:0 4px}
+.tabs.t3{grid-template-columns:repeat(3,1fr)}
+.fl{display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer}
+.pcard{text-align:center;margin:4px 0 14px}.pcard h2{margin:8px 0 2px}.pcard small{display:block;color:var(--dim);font-size:13px}
+.note{color:var(--dim);font-size:12px;text-align:center;margin-top:12px}
+.dm{position:fixed;inset:0;z-index:14;background:var(--bg);display:flex;flex-direction:column;max-width:480px;margin:0 auto;padding-top:env(safe-area-inset-top)}
+.dmhead{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.dmlog{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:82%;padding:8px 12px;border-radius:14px;background:var(--panel2);align-self:flex-start;word-break:break-word;font-size:15px;user-select:text}
+.msg.mine{align-self:flex-end;background:linear-gradient(135deg,rgba(45,226,255,.22),rgba(168,85,247,.3))}
+.msg small{display:block;color:var(--dim);font-size:10px;margin-top:2px}
+.dmact{padding:6px 12px}
+.dm .chatin{padding-bottom:calc(8px + env(safe-area-inset-bottom))}
 .codeIn{width:100%;margin:0 0 14px;padding:14px;border-radius:14px;border:2px solid var(--line);background:var(--bg);color:var(--blue);font:900 30px var(--font);text-align:center;letter-spacing:.4em;user-select:text}
 .codeIn:focus{outline:none;border-color:var(--blue);box-shadow:0 0 16px rgba(45,226,255,.4)}
 #hist2Wrap{margin-top:12px}
@@ -183,9 +201,18 @@ tr.new{animation:rowin .4s}
   <div class="net on" id="net"><i></i><span>Online</span></div>
 
   <!-- MENU -->
-  <section id="menu" class="screen">
+  <section id="home" class="screen">
     <button class="acct" id="acctBtn"></button>
     <p class="tagline">Crack the secret 3-digit code.<br>N = digits that exist in the secret. P = digits in the exact position.</p>
+    <button class="cta" data-go="menu">▶ PLAY NOW</button>
+    <button class="ghost" id="hmOnline">🌐 Online Duel with a friend</button>
+    <button class="ghost" data-go="friends">👥 Friends &amp; chat</button>
+    <button class="ghost" data-go="board">🏆 Leaderboard</button>
+    <div class="rules"><b>Rules:</b> the code has 3 different digits and never starts with 0.<br>Example: secret <i>675</i>, guess <i>476</i> gives <i>P=1</i> (the 7 is in the right position) and <i>N=2</i> (7 and 6 both exist in the secret). N counts every shared digit, so P can never be bigger than N.</div>
+  </section>
+
+  <!-- PLAY -->
+  <section id="menu" class="screen hidden">
     <button class="mode sel" data-mode="cpu"><span class="e">🤖</span><span><b>Player vs Computer</b><small>The computer picks a secret code</small></span></button>
     <button class="mode" data-mode="two"><span class="e">👥</span><span><b>Two Players</b><small>One sets the code, the other guesses</small></span></button>
     <button class="mode" data-mode="online"><span class="e">🌐</span><span><b>Online Duel</b><small>Play a friend on another phone</small></span></button>
@@ -198,12 +225,30 @@ tr.new{animation:rowin .4s}
     <div style="height:20px"></div>
     <button class="cta" id="startBtn">START GAME</button>
     <button class="ghost" id="scoreBtn">🏆 Scoreboard</button>
-    <button class="ghost" id="friendsBtn">👥 Friends <span class="badge hidden" id="fbadge"></span></button>
-    <div class="rules">
-      <b>Rules:</b> the code has 3 different digits and never starts with 0.<br>
-      Example: secret <i>675</i>, guess <i>476</i> gives <i>P=1</i> (the 7 is in the right position) and <i>N=2</i> (7 and 6 both exist in the secret). N counts every shared digit, so P can never be bigger than N.
-    </div>
   </section>
+
+  <!-- ONLINE PLAYERS -->
+  <section id="online" class="screen hidden">
+    <div class="sec" id="onSum"></div>
+    <div id="onList"></div>
+    <button class="ghost" id="onRefresh">Refresh</button>
+  </section>
+
+  <!-- LEADERBOARD -->
+  <section id="board" class="screen hidden">
+    <div class="tabs t3" id="bcat">
+      <button data-c="wins" class="sel">Most wins</button><button data-c="winrate">Win rate</button><button data-c="games">Most games</button>
+      <button data-c="streak">Best streak</button><button data-c="weekly">Weekly</button><button data-c="monthly">Monthly</button>
+    </div>
+    <div id="bList"></div>
+    <p class="note">Rankings use verified online matches only. Win rate needs at least 5 games.</p>
+  </section>
+
+  <!-- PROFILE -->
+  <section id="profile" class="screen hidden"><div id="pBox"></div></section>
+
+  <!-- SETTINGS -->
+  <section id="settings" class="screen hidden"><div id="sBox"></div></section>
 
   <!-- GAME -->
   <section id="game" class="screen hidden">
@@ -246,6 +291,21 @@ tr.new{animation:rowin .4s}
   </section>
   <footer class="credit">Created by <b>MOIN</b></footer>
 </div>
+<div id="dm" class="dm hidden">
+  <div class="dmhead"><button class="icon-btn" id="dmBack" aria-label="Back">←</button><div id="dmWho" style="flex:1;min-width:0"></div><button class="sbtn" id="dmInvite">Invite</button></div>
+  <div class="dmlog" id="dmLog"></div>
+  <div class="dmact"><button class="sbtn ok" id="dmCode" style="width:100%;padding:10px">📨 Create a room &amp; send its code</button></div>
+  <div class="chatin"><input id="dmIn" class="fld" maxlength="500" placeholder="Message…" autocomplete="off"><button class="sbtn ok" id="dmSend">Send</button></div>
+</div>
+<nav class="nav" id="nav">
+  <button data-go="home" class="sel"><i>🏠</i>Home</button>
+  <button data-go="menu"><i>🎮</i>Play</button>
+  <button data-go="friends"><i>👥</i>Friends<span class="badge hidden" id="fbadge"></span></button>
+  <button data-go="online"><i>🟢</i>Online</button>
+  <button data-go="board"><i>🏆</i>Board</button>
+  <button data-go="profile"><i>👤</i>Profile</button>
+  <button data-go="settings"><i>⚙️</i>Settings</button>
+</nav>
 <div id="modal" class="hidden"></div>
 <div id="toast"></div>
 <canvas id="fx"></canvas>
@@ -407,11 +467,12 @@ tr.new{animation:rowin .4s}
     $("#pVal").textContent = r ? r.p : "–"; $("#nVal").textContent = r ? r.n : "–";
     if (r) ["#pBox", "#nBox"].forEach(id => { const e = $(id); e.classList.remove("flash"); void e.offsetWidth; e.classList.add("flash"); });
   }
+  const SCREENS = ["home", "menu", "game", "friends", "online", "board", "profile", "settings"];
   function show(screen) {
-    $("#menu").classList.toggle("hidden", screen !== "menu");
-    $("#game").classList.toggle("hidden", screen !== "game");
-    $("#friends").classList.toggle("hidden", screen !== "friends");
-    $("#homeBtn").style.visibility = screen === "menu" ? "hidden" : "visible";
+    SCREENS.forEach(s => $("#" + s).classList.toggle("hidden", s !== screen));
+    $("#homeBtn").style.visibility = screen === "game" ? "visible" : "hidden";
+    $("#nav").classList.toggle("hidden", screen === "game");
+    document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("sel", b.dataset.go === screen));
     sendPresence();
   }
 
@@ -511,7 +572,7 @@ tr.new{animation:rowin .4s}
     S.cur = ""; S.guesses = []; S.over = false; showResult(null); render();
     toast("Same secret, fresh attempts");
   }
-  function goMenu() { onlineClose(); S.phase = "menu"; S.over = false; show("menu"); }
+  function goMenu() { onlineClose(); S.phase = "menu"; S.over = false; show("home"); }
 
   $("#startBtn").onclick = () => {
     sfx.tap();
@@ -686,7 +747,6 @@ tr.new{animation:rowin .4s}
     b.innerHTML = A.user
       ? avatarHTML(A.user, 40) + `<span><b>${esc(A.user.username)}</b><small>Tap to open your profile</small></span>`
       : '<span class="av">👤</span><span><b>Guest</b><small>Sign in to keep your progress on every device</small></span>';
-    $("#friendsBtn").classList.toggle("hidden", A.enabled === false);
     if (A.user) socConnect(); else socClose();
   }
   $("#acctBtn").onclick = () => {
@@ -765,17 +825,7 @@ tr.new{animation:rowin .4s}
         history.replaceState(null, "", "/"); toast("Password updated. Please sign in.", true); loginForm();
       } }, { label: "Cancel", ghost: true, fn: () => history.replaceState(null, "", "/") }] });
   }
-  async function profile() {
-    if (!A.user) return loginForm();
-    if (netOk) { const r = await acall("GET", "me"); if (r.user) { A.user = r.user; A.stats = r.stats; paintAcct(); } }
-    const u = A.user, st = A.stats || { games: 0, wins: 0, losses: 0, winRate: 0, bestStreak: 0 };
-    showModal({ icon: avatarHTML(u, 72), title: esc(u.username),
-      body: `<p style="margin-bottom:10px;font-size:13px">${netOk ? "🟢 Online" : "🔴 Offline"} · ID ${esc(u.id)}<br>${esc(u.email)}</p>
-        <div class="stats"><div><b>${st.games}</b><small>Games</small></div><div><b>${st.wins}</b><small>Wins</small></div><div><b>${st.losses}</b><small>Losses</small></div></div>
-        <div class="stats"><div><b>${st.winRate}%</b><small>Win rate</small></div><div><b>${st.bestStreak}</b><small>Best streak</small></div><div><b>${new Date(u.created).getFullYear()}</b><small>Joined</small></div></div>`,
-      actions: [{ label: "EDIT PROFILE", keep: true, fn: editForm }, { label: "Sign out", ghost: true, keep: true, fn: doLogout },
-        { label: "Delete account", ghost: true, keep: true, fn: deleteForm }, { label: "Close", ghost: true }] });
-  }
+  function profile() { closeModal(); go("profile"); }
   function editForm() {
     const u = A.user;
     showModal({ icon: avatarHTML(u, 72), title: "Edit profile",
@@ -796,7 +846,7 @@ tr.new{animation:rowin .4s}
   }
   async function doLogout() {
     await acall("POST", "auth/logout", {});
-    A.user = null; A.stats = null; paintAcct(); closeModal(); toast("Signed out", true);
+    A.user = null; A.stats = null; paintAcct(); closeModal(); toast("Signed out", true); go("home");
   }
   function deleteForm() {
     showModal({ icon: "⚠️", title: "Delete account?", cls: "lose",
@@ -805,7 +855,7 @@ tr.new{animation:rowin .4s}
         const pw = fv("f_pw", false); if (!pw) return amsg("Enter your password");
         const r = await acall("POST", "me/delete", { password: pw });
         if (r.error) return amsg(r.error);
-        A.user = null; A.stats = null; paintAcct(); closeModal(); toast("Account deleted", true);
+        A.user = null; A.stats = null; paintAcct(); closeModal(); toast("Account deleted", true); go("home");
       } }, { label: "Keep my account", ghost: true, keep: true, fn: profile }] });
   }
 
@@ -833,12 +883,13 @@ tr.new{animation:rowin .4s}
         if (f) { f.status = m.status; f.seen = m.seen; if (friendsOpen() && SOC.tab === "friends") renderTab(); }
       } else if (m.t === "friends_changed") socRefresh();
       else if (m.t === "invite") showInvite(m);
+      else if (m.t === "dm") onDM(m);
       else if (m.t === "match_found") { closeModal(); if (!O.room) startRoom(m); }
       else if (m.t === "match_timeout") { closeModal(); toast("No opponent found. Try again."); }
       else if (m.t === "invite_rejected") toast(m.name + " declined your invitation");
       else if (m.t === "notify") {
         const txt = { friend_request: " sent you a friend request", friend_accepted: " accepted your friend request", friend_online: " is online" }[m.kind];
-        if (txt) { toast(m.name + txt, true); sfx.tap(); }
+        if (txt && (m.kind !== "friend_online" || PREFS.friendAlerts)) { toast(m.name + txt, true); sfx.tap(); }
       }
     };
     SOC.es.onerror = () => { if (SOC.es && SOC.es.readyState === 2) socClose(); };
@@ -862,7 +913,7 @@ tr.new{animation:rowin .4s}
   function paintBadges() {
     const req = SOC.data ? SOC.data.incoming.length : 0;
     const set = (id, n) => { const e = $(id); e.textContent = n; e.classList.toggle("hidden", !n); };
-    set("#rbadge", req); set("#abadge", SOC.unread); set("#fbadge", Math.max(req, SOC.unread));
+    set("#rbadge", req); set("#abadge", SOC.unread); set("#fbadge", Math.max(req, SOC.unread) + (SOC.data ? SOC.data.friends.reduce((n, f) => n + (f.unread || 0), 0) : 0));
   }
   async function socRefresh() {
     if (!A.user || !netOk) return;
@@ -871,7 +922,7 @@ tr.new{animation:rowin .4s}
     if (!n.error) { SOC.alerts = n.items; SOC.unread = n.unread; }
     paintBadges(); if (friendsOpen()) renderTab();
   }
-  const prow = (p, sub, btns) => `<div class="frow">${pav(p)}<div class="fi"><b>${esc(p.username)}</b><small>${sub}</small></div><div class="fb">${btns}</div></div>`;
+  const prow = (p, sub, btns) => `<div class="frow"><div class="fl" data-prof="${esc(p.id)}">${pav(p)}<div class="fi"><b>${esc(p.username)}</b><small>${sub}</small></div></div><div class="fb">${btns}</div></div>`;
   const sb = (a, id, label, cls = "") => `<button class="sbtn ${cls}" data-a="${a}" data-id="${esc(id)}">${label}</button>`;
   function renderTab() {
     const d = SOC.data, p = $("#fpanel");
@@ -884,7 +935,7 @@ tr.new{animation:rowin .4s}
       const on = fs.filter(f => f.status !== "offline").length;
       p.innerHTML = fs.length
         ? `<div class="sec">${on} online · ${fs.length} friend${fs.length === 1 ? "" : "s"}</div>` + fs.map(f =>
-            prow(f, DOT[f.status] + " " + LABEL[f.status] + (f.status === "offline" ? " · last seen " + ago(f.seen) : ""), (f.status === "online" || f.status === "away" ? sb("invite", f.id, "Invite", "ok") : "") + sb("remove", f.id, "Remove") + sb("block", f.id, "Block", "bad"))).join("")
+            prow(f, DOT[f.status] + " " + LABEL[f.status] + (f.status === "offline" ? " · last seen " + ago(f.seen) : ""), sb("chat", f.id, "💬 Chat" + (f.unread ? " (" + f.unread + ")" : ""), "ok") + (f.status === "online" || f.status === "away" ? sb("invite", f.id, "Invite") : ""))).join("")
         : '<div class="empty">No friends yet. Use Find to search by username or Player ID.</div>';
     } else if (SOC.tab === "requests") {
       let h = "";
@@ -916,29 +967,226 @@ tr.new{animation:rowin .4s}
     await socRefresh(); if (SOC.tab === "find") doSearch();
   }
   $("#fpanel").addEventListener("input", e => { if (e.target.id === "fq") { clearTimeout(findT); findT = setTimeout(doSearch, 350); } });
-  $("#fpanel").addEventListener("click", e => {
-    const b = e.target.closest("button[data-a]");
-    if (!b) return;
-    const a = b.dataset.a, id = b.dataset.id;
-    if (a === "invite") return inviteFriend(id);
-    if (a === "remove" || a === "block")
-      return showModal({ icon: a === "remove" ? "💔" : "⛔", title: a === "remove" ? "Remove friend?" : "Block this player?",
-        body: "<p>" + (a === "remove" ? "You will no longer see each other’s status." : "They won’t be able to send you requests, and any friendship ends.") + "</p>",
-        actions: [{ label: a === "remove" ? "REMOVE" : "BLOCK", fn: () => friendAct(a, id) }, { label: "Cancel", ghost: true }] });
-    friendAct(a, id);
-  });
+  $("#fpanel").addEventListener("click", e => rowClick(e));
   $("#ftabs").addEventListener("click", e => {
     const b = e.target.closest("button[data-t]");
     if (!b) return;
     SOC.tab = b.dataset.t; renderTab(); sfx.tap();
     if (SOC.tab === "alerts" && SOC.unread) acall("POST", "me/notifications/read", {}).then(() => { SOC.unread = 0; paintBadges(); });
   });
-  $("#friendsBtn").onclick = () => {
-    sfx.tap();
-    if (!netOk) return toast("Friends need an internet connection");
+
+  /* ---------- Navigation, profiles, chat, leaderboard, settings ---------- */
+  const PREFS = (() => { try { return Object.assign({ friendAlerts: true }, JSON.parse(localStorage.getItem("pn_prefs"))); } catch (e) { return { friendAlerts: true }; } })();
+  const savePrefs = () => { try { localStorage.setItem("pn_prefs", JSON.stringify(PREFS)); } catch (e) {} };
+  const pavN = (p, px) => p.av
+    ? `<img class="av" style="width:${px}px;height:${px}px" src="/api/me/avatar/${esc(p.id)}" alt="">`
+    : `<span class="av" style="width:${px}px;height:${px}px;font-size:${Math.round(px * .45)}px">${esc(String(p.username || "?")[0].toUpperCase())}</span>`;
+  const statsHTML = (st, third) => `<div class="stats"><div><b>${st.games}</b><small>Games</small></div><div><b>${st.wins}</b><small>Wins</small></div><div><b>${st.losses}</b><small>Losses</small></div></div>
+    <div class="stats"><div><b>${st.winRate}%</b><small>Win rate</small></div><div><b>${st.bestStreak}</b><small>Best streak</small></div><div><b>${third.v}</b><small>${third.l}</small></div></div>`;
+  const EMPTY_ST = { games: 0, wins: 0, losses: 0, winRate: 0, bestStreak: 0 };
+
+  function go(name) {
+    S.phase = "menu";
+    if (["friends", "online", "profile"].includes(name)) {
+      if (!netOk) return toast("This needs an internet connection");
+      if (!A.user) return loginForm();
+    }
+    if (name === "board" && !netOk) return toast("The leaderboard needs an internet connection");
+    show(name);
+    if (name === "friends") { SOC.tab = "friends"; renderTab(); socRefresh(); }
+    else if (name === "online") loadOnline();
+    else if (name === "board") loadBoard();
+    else if (name === "profile") loadProfile();
+    else if (name === "settings") renderSettings();
+  }
+  document.addEventListener("click", e => { const b = e.target.closest("[data-go]"); if (b) { sfx.tap(); go(b.dataset.go); } });
+  $("#hmOnline").onclick = () => { document.querySelector('.mode[data-mode="online"]').click(); go("menu"); $("#startBtn").click(); };
+
+  /* rows shared by Friends, Online players and the leaderboard */
+  function confirmAct(a, id) {
+    showModal({ icon: a === "remove" ? "💔" : "⛔", title: a === "remove" ? "Remove friend?" : "Block this player?",
+      body: "<p>" + (a === "remove" ? "You will no longer see each other’s status or chat." : "They won’t be able to send you requests, and any friendship ends.") + "</p>",
+      actions: [{ label: a === "remove" ? "REMOVE" : "BLOCK", fn: () => friendAct(a, id).then(refreshLists) }, { label: "Cancel", ghost: true }] });
+  }
+  const refreshLists = () => { if (!$("#online").classList.contains("hidden")) loadOnline(); };
+  function rowClick(e) {
+    const b = e.target.closest("button[data-a]");
+    if (b) {
+      const a = b.dataset.a, id = b.dataset.id;
+      if (a === "chat") return openDM(id);
+      if (a === "invite") return inviteFriend(id);
+      if (a === "remove" || a === "block") return confirmAct(a, id);
+      return friendAct(a, id).then(refreshLists);
+    }
+    const p = e.target.closest("[data-prof]");
+    if (p) viewProfile(p.dataset.prof);
+  }
+
+  /* another player's account */
+  async function viewProfile(pid) {
     if (!A.user) return loginForm();
-    SOC.tab = "friends"; show("friends"); renderTab(); socRefresh();
+    if (pid === A.user.id) return go("profile");
+    if (!netOk) return toast("This needs an internet connection");
+    const r = await acall("GET", "me/player?id=" + encodeURIComponent(pid));
+    if (r.error) { sfx.err(); return toast(r.error); }
+    const rel = r.rel, acts = [];
+    if (rel === "friend") {
+      acts.push({ label: "💬 MESSAGE", fn: () => openDM(pid) });
+      if (r.status === "online" || r.status === "away") acts.push({ label: "Invite to play", ghost: true, fn: () => inviteFriend(pid) });
+    } else if (rel === "none") acts.push({ label: "ADD FRIEND", fn: () => friendAct("request", pid).then(refreshLists) });
+    else if (rel === "pending_in") acts.push({ label: "ACCEPT REQUEST", fn: () => friendAct("accept", pid).then(refreshLists) });
+    else if (rel === "pending_out") acts.push({ label: "Request sent", ghost: true });
+    else if (rel === "blocked") acts.push({ label: "Unblock", fn: () => friendAct("unblock", pid).then(refreshLists) });
+    if (rel === "friend") acts.push({ label: "Remove friend", ghost: true, fn: () => confirmAct("remove", pid) });
+    if (rel === "friend" || rel === "none") acts.push({ label: "Block", ghost: true, fn: () => confirmAct("block", pid) });
+    acts.push({ label: "Close", ghost: true });
+    const line = rel === "friend" ? DOT[r.status] + " " + LABEL[r.status] + (r.status === "offline" && r.seen ? " · last seen " + ago(r.seen) : "") + " · " : "";
+    showModal({ icon: pavN(r, 72), title: esc(r.username),
+      body: `<p style="margin-bottom:10px;font-size:13px">${line}ID ${esc(r.id)}</p>` + statsHTML(r.stats || EMPTY_ST, { v: new Date(r.joined).getFullYear(), l: "Joined" }), actions: acts });
+  }
+
+  /* online players */
+  async function loadOnline() {
+    const box = $("#onList");
+    const r = await acall("GET", "me/online");
+    if (r.error) { box.innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
+    const ps = r.players || [];
+    $("#onSum").textContent = ps.length ? ps.length + " player" + (ps.length === 1 ? "" : "s") + " online right now" : "";
+    box.innerHTML = ps.length ? ps.map(x => prow(x, DOT[x.status] + " " + LABEL[x.status],
+      x.rel === "friend" ? sb("chat", x.id, "💬 Chat", "ok") : x.rel === "pending_out" ? "<small>Request sent</small>" :
+      x.rel === "pending_in" ? sb("accept", x.id, "Accept", "ok") : x.rel === "blocked" ? "" : sb("request", x.id, "Add friend", "ok"))).join("")
+      : '<div class="empty">Nobody else is online right now. Players who hide their status are not listed.</div>';
+  }
+  $("#onList").addEventListener("click", rowClick);
+  $("#onRefresh").onclick = () => { sfx.tap(); loadOnline(); };
+  setInterval(() => { if (!$("#online").classList.contains("hidden") && netOk) loadOnline(); }, 15000);
+
+  /* friend chat */
+  const DM = { peer: null, msgs: [] };
+  async function openDM(pid) {
+    const r = await acall("GET", "me/dm?with=" + encodeURIComponent(pid));
+    if (r.error) { sfx.err(); return toast(r.error); }
+    closeModal();
+    const f = SOC.data && SOC.data.friends.find(x => x.id === pid);
+    DM.peer = { id: pid, username: r.name || (f && f.username) || "Friend", av: !!(f && f.av) };
+    DM.msgs = r.messages || [];
+    $("#dm").classList.remove("hidden"); renderDM(true);
+    if (f) { f.unread = 0; paintBadges(); if (friendsOpen()) renderTab(); }
+  }
+  function renderDM(toEnd) {
+    const p = DM.peer, f = SOC.data && SOC.data.friends.find(x => x.id === p.id), st = f ? f.status : "offline";
+    $("#dmWho").innerHTML = `<div class="fl" data-prof="${esc(p.id)}">${pavN({ id: p.id, username: p.username, av: f ? f.av : p.av }, 36)}<div class="fi"><b>${esc(p.username)}</b><small>${DOT[st]} ${LABEL[st]}</small></div></div>`;
+    const log = $("#dmLog"), atEnd = toEnd || log.scrollTop + log.clientHeight >= log.scrollHeight - 40;
+    log.innerHTML = DM.msgs.length ? DM.msgs.map(m => {
+      const tm = new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const rc = /Room code: (\d{4})/.exec(m.text), fresh = rc && Date.now() - new Date(m.at) < 30 * 60e3;
+      const body = rc ? `📨 Room code <b>${rc[1]}</b>` + (m.mine ? "" : fresh ? ` <button class="sbtn ok" data-joinroom="${rc[1]}">Join</button>` : " <small>(expired)</small>") : esc(m.text);
+      return `<div class="msg ${m.mine ? "mine" : ""}">${body}<small>${tm}</small></div>`;
+    }).join("") : '<div class="empty">No messages yet. Say hi 👋</div>';
+    if (atEnd) log.scrollTop = log.scrollHeight;
+  }
+  async function dmSend(text) {
+    const r = await acall("POST", "me/dm/send", { id: DM.peer.id, text });
+    if (r.error) { sfx.err(); toast(r.error); return false; }
+    DM.msgs.push({ mine: true, text, at: new Date().toISOString() }); renderDM(true);
+    return true;
+  }
+  function onDM(m) {
+    const open = !$("#dm").classList.contains("hidden") && DM.peer && DM.peer.id === m.from;
+    if (open) { DM.msgs.push({ mine: false, text: m.text, at: m.ts || Date.now() }); renderDM(); sfx.tap(); acall("GET", "me/dm?with=" + encodeURIComponent(m.from)); return; }
+    const f = SOC.data && SOC.data.friends.find(x => x.id === m.from);
+    if (f) f.unread = (f.unread || 0) + 1;
+    paintBadges(); if (friendsOpen() && SOC.tab === "friends") renderTab();
+    toast(m.name + ": " + (/Room code:/.test(m.text) ? "📨 sent you a room code" : String(m.text).slice(0, 40)), true); sfx.tap();
+  }
+  async function sendDMInput() {
+    const i = $("#dmIn"), x = i.value.trim();
+    if (!x || !DM.peer) return;
+    i.value = "";
+    if (!(await dmSend(x))) i.value = x;
+  }
+  $("#dmSend").onclick = sendDMInput;
+  $("#dmIn").addEventListener("keydown", e => { if (e.key === "Enter") sendDMInput(); });
+  $("#dmBack").onclick = () => { $("#dm").classList.add("hidden"); DM.peer = null; };
+  $("#dmWho").addEventListener("click", e => { const p = e.target.closest("[data-prof]"); if (p) viewProfile(p.dataset.prof); });
+  $("#dmInvite").onclick = () => { if (DM.peer) { const id = DM.peer.id; $("#dm").classList.add("hidden"); DM.peer = null; inviteFriend(id); } };
+  $("#dmCode").onclick = async () => {
+    if (!DM.peer || !netOk) return;
+    const r = await api("create", { visibility: "private" });
+    if (r.error) { sfx.err(); return toast(r.error); }
+    if (!(await dmSend("🎮 Room code: " + r.room))) { api("leave", { room: r.room, tok: r.tok }); return; }
+    const name = DM.peer.username;
+    $("#dm").classList.add("hidden"); DM.peer = null;
+    startRoom(r); toast("Room code sent to " + name, true);
   };
+  $("#dmLog").addEventListener("click", e => {
+    const b = e.target.closest("[data-joinroom]");
+    if (b) { $("#dm").classList.add("hidden"); DM.peer = null; enterRoom(b.dataset.joinroom); }
+  });
+
+  /* my profile */
+  async function loadProfile() {
+    const box = $("#pBox"), u = A.user, MODE = { cpu: "vs Computer", two: "2 Players", online: "Online" };
+    box.innerHTML = '<div class="empty">Loading…</div>';
+    const r = await acall("GET", "me/profile");
+    if (!A.user) return;
+    const st = (r && r.stats) || A.stats || EMPTY_ST;
+    const recent = (r.recent || []).map(g => `<div class="frow"><div class="fi"><b style="color:var(${g.won ? "--good" : "--bad"})">${g.won ? "Win" : "Loss"}</b><small>${esc(MODE[g.mode] || g.mode)} · ${g.attempts} attempt${g.attempts === 1 ? "" : "s"}${g.at ? " · " + ago(g.at) : ""}</small></div></div>`).join("");
+    box.innerHTML = `<div class="pcard">${avatarHTML(u, 84)}<h2>${esc(u.username)}</h2><small>${netOk ? "🟢 Online" : "🔴 Offline"} · ID ${esc(u.id)}</small><small>${esc(u.email)}</small></div>` +
+      statsHTML(st, { v: r.friends || 0, l: "Friends" }) + '<div class="sec">Recent matches</div>' + (recent || '<div class="empty">No matches saved to your account yet.</div>') +
+      '<button class="cta" id="pEdit" style="margin-top:12px">EDIT PROFILE</button><button class="ghost" id="pOut">Sign out</button>';
+  }
+  $("#pBox").addEventListener("click", e => { if (e.target.id === "pEdit") editForm(); else if (e.target.id === "pOut") doLogout(); });
+
+  /* leaderboard */
+  const BS = { cat: "wins" };
+  async function loadBoard() {
+    document.querySelectorAll("#bcat button").forEach(b => b.classList.toggle("sel", b.dataset.c === BS.cat));
+    const box = $("#bList"); box.innerHTML = '<div class="empty">Loading…</div>';
+    const r = await acall("GET", "leaderboard?cat=" + BS.cat);
+    if (r.error) { box.innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
+    const rows = r.rows || [], unit = { wins: "wins", winrate: "win rate", games: "games played", streak: "wins in a row", weekly: "wins this week", monthly: "wins this month" }[BS.cat];
+    box.innerHTML = rows.length ? `<div class="sec">${unit}</div>` + rows.map(x => `<div class="frow ${x.me ? "unread" : ""}"><b style="width:30px;text-align:center">${x.rank <= 3 ? ["🥇", "🥈", "🥉"][x.rank - 1] : x.rank}</b><div class="fl" data-prof="${esc(x.id)}">${pavN(x, 40)}<div class="fi"><b>${esc(x.username)}${x.me ? " (you)" : ""}</b></div></div><b style="color:var(--blue);font-size:18px">${esc(x.v)}${BS.cat === "winrate" ? "%" : ""}</b></div>`).join("")
+      : '<div class="empty">No ranked matches yet. Win online matches while signed in to appear here!</div>';
+  }
+  $("#bcat").addEventListener("click", e => { const b = e.target.closest("button[data-c]"); if (b) { sfx.tap(); BS.cat = b.dataset.c; loadBoard(); } });
+  $("#bList").addEventListener("click", rowClick);
+
+  /* settings */
+  async function idbClear() {
+    const d = await idb(); if (!d) return;
+    return new Promise(res => {
+      try { const tx = d.transaction(["games", "kv"], "readwrite"); tx.objectStore("games").clear(); tx.objectStore("kv").clear(); tx.oncomplete = () => res(); tx.onerror = tx.onabort = () => res(); } catch (e) { res(); }
+    });
+  }
+  function renderSettings() {
+    const row = (id, title, sub, on) => `<div class="frow"><div class="fi"><b>${title}</b><small>${sub}</small></div><button class="sbtn ${on ? "ok" : ""}" id="${id}">${on ? "ON" : "OFF"}</button></div>`;
+    $("#sBox").innerHTML = row("sSound", "Sound effects", "Game sounds and alerts", !muted) +
+      row("sAlerts", "Friend alerts", "Show a message when a friend comes online", PREFS.friendAlerts) +
+      (A.user ? row("sShow", "Show me in Online players", "Others can see you in the Online list (friends always can)", A.user.showOnline !== false) : "") +
+      '<div class="sec">Account</div>' +
+      (A.user ? `<div class="frow"><div class="fi"><b>${esc(A.user.username)}</b><small>${esc(A.user.email)}</small></div><button class="sbtn" id="sEdit">Edit</button></div>
+        <button class="ghost" id="sOut">Sign out</button><button class="ghost" id="sDel" style="color:var(--bad)">Delete account</button>`
+        : '<button class="cta" id="sIn">SIGN IN / CREATE ACCOUNT</button>') +
+      '<div class="sec">This device</div><button class="ghost" id="sClear">Clear games and statistics on this device</button>' +
+      '<div class="sec">About</div><div class="rules"><b>P&amp;N MOIN</b> · version 1.0<br>Created by <b>MOIN</b>.<br>Tip: in your browser menu choose “Install app” or “Add to Home screen” to play it like an app.</div>';
+  }
+  $("#sBox").addEventListener("click", async e => {
+    const id = e.target.id;
+    if (id === "sSound") { $("#muteBtn").click(); renderSettings(); }
+    else if (id === "sAlerts") { PREFS.friendAlerts = !PREFS.friendAlerts; savePrefs(); renderSettings(); }
+    else if (id === "sShow") {
+      const want = A.user.showOnline === false, r = await acall("POST", "me/settings", { showOnline: want });
+      if (r.error) return toast(r.error);
+      A.user.showOnline = want; renderSettings();
+    }
+    else if (id === "sEdit") editForm();
+    else if (id === "sOut") doLogout();
+    else if (id === "sDel") deleteForm();
+    else if (id === "sIn") loginForm();
+    else if (id === "sClear") showModal({ icon: "🗑️", title: "Clear this device?", body: "<p>This deletes the games and statistics saved on this device. Your online account is not changed.</p>",
+      actions: [{ label: "CLEAR", fn: async () => { await idbClear(); try { localStorage.removeItem(SKEY); } catch (er) {} toast("Cleared", true); } }, { label: "Cancel", ghost: true }] });
+  });
 
   /* ---------- Online duel ---------- */
   const O = { room: null, pid: 0, tok: "", st: null, es: null, shown: false, cnt: 0 };
@@ -1099,7 +1347,7 @@ tr.new{animation:rowin .4s}
   }
 
   /* ---------- Init ---------- */
-  buildPad(); paintMute(); show("menu");
+  buildPad(); paintMute(); show("home");
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) navigator.serviceWorker.register("/service-worker.js").catch(() => {});
   paintNet(); checkNet(false);
   // Keep stats safe in IndexedDB too: restore if browser storage was cleared, otherwise mirror it

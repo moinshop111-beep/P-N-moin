@@ -56,7 +56,18 @@ CREATE TABLE IF NOT EXISTS notifications (
   data JSONB NOT NULL DEFAULT '{}',
   read BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);`;
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS show_online BOOLEAN NOT NULL DEFAULT true;
+CREATE TABLE IF NOT EXISTS dms (
+  id SERIAL PRIMARY KEY,
+  from_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  to_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS dms_pair ON dms (LEAST(from_id, to_id), GREATEST(from_id, to_id), id);
+CREATE INDEX IF NOT EXISTS dms_unread ON dms (to_id) WHERE NOT read;`;
 
 let pool = null, ready = false;
 
@@ -75,6 +86,7 @@ async function init() {
     setInterval(() => {
       pool.query("DELETE FROM sessions WHERE expires_at < now()").catch(() => {});
       pool.query("DELETE FROM notifications WHERE created_at < now() - interval '30 days'").catch(() => {});
+      pool.query("DELETE FROM dms WHERE created_at < now() - interval '60 days'").catch(() => {});
     }, 3600e3);
     setInterval(() => conns.forEach(set => set.forEach(c => { try { c.res.write(": ping\n\n"); } catch (e) {} })), 25000);
   } catch (e) { console.log("Accounts disabled, database error:", e.message); }
@@ -122,7 +134,7 @@ const validName = s => typeof s === "string" && /^[A-Za-z0-9_]{3,20}$/.test(s);
 const validEmail = s => typeof s === "string" && s.length <= 254 && /^[^\s@]{1,64}@[^\s@]+\.[^\s@]{2,}$/.test(s);
 const validPw = s => typeof s === "string" && s.length >= 8 && s.length <= 100;
 const cleanAvatar = a => (typeof a === "string" && a.length <= 60000 && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(a) ? a : null);
-const pub = u => ({ id: u.player_id, username: u.username, email: u.email, avatar: u.avatar, created: u.created_at });
+const pub = u => ({ id: u.player_id, username: u.username, email: u.email, avatar: u.avatar, created: u.created_at, showOnline: u.show_online !== false });
 const playerId = () => "PN-" + crypto.randomInt(100000, 1000000);
 
 async function mail(to, subject, text) {
@@ -227,10 +239,11 @@ async function friendsList(me) {
   const r = await pool.query(`SELECT f.status, f.requester, u.id AS uid, u.player_id, u.username, (u.avatar IS NOT NULL) AS av, u.last_seen
     FROM friendships f JOIN users u ON u.id = CASE WHEN f.requester = $1 THEN f.addressee ELSE f.requester END
     WHERE f.requester = $1 OR f.addressee = $1 ORDER BY u.username`, [me.id]);
+  const un = new Map((await pool.query("SELECT from_id, count(*)::int AS n FROM dms WHERE to_id = $1 AND NOT read GROUP BY from_id", [me.id])).rows.map(x => [x.from_id, x.n]));
   const out = { friends: [], incoming: [], outgoing: [], blocked: [] };
   r.rows.forEach(x => {
     const o = { id: x.player_id, username: x.username, av: x.av };
-    if (x.status === "accepted") out.friends.push(Object.assign(o, { status: statusOf(x.uid), seen: x.last_seen }));
+    if (x.status === "accepted") out.friends.push(Object.assign(o, { status: statusOf(x.uid), seen: x.last_seen, unread: un.get(x.uid) || 0 }));
     else if (x.status === "pending") (x.requester === me.id ? out.outgoing : out.incoming).push(o);
     else if (x.status === "blocked" && x.requester === me.id) out.blocked.push(o);
   });
@@ -241,6 +254,20 @@ async function notifList(id) {
   const n = await pool.query("SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND NOT read", [id]);
   return { items: r.rows.map(x => ({ type: x.type, name: x.data.username, read: x.read, at: x.created_at })), unread: n.rows[0].n };
 }
+
+/* ---------- leaderboard ---------- */
+const LB = {
+  wins: "SELECT user_id, count(*) FILTER (WHERE won)::int AS v FROM games WHERE source = 'verified' GROUP BY user_id HAVING count(*) FILTER (WHERE won) > 0",
+  winrate: "SELECT user_id, round(100.0 * count(*) FILTER (WHERE won) / count(*))::int AS v FROM games WHERE source = 'verified' GROUP BY user_id HAVING count(*) >= 5",
+  games: "SELECT user_id, count(*)::int AS v FROM games WHERE source = 'verified' GROUP BY user_id",
+  weekly: "SELECT user_id, count(*) FILTER (WHERE won)::int AS v FROM games WHERE source = 'verified' AND played_at > now() - interval '7 days' GROUP BY user_id HAVING count(*) FILTER (WHERE won) > 0",
+  monthly: "SELECT user_id, count(*) FILTER (WHERE won)::int AS v FROM games WHERE source = 'verified' AND played_at > now() - interval '30 days' GROUP BY user_id HAVING count(*) FILTER (WHERE won) > 0",
+  streak: "SELECT user_id, max(len)::int AS v FROM (SELECT user_id, count(*) AS len FROM (SELECT user_id, won, row_number() OVER (PARTITION BY user_id ORDER BY played_at, id) - row_number() OVER (PARTITION BY user_id, won ORDER BY played_at, id) AS grp FROM games WHERE source = 'verified') t WHERE won GROUP BY user_id, grp) s GROUP BY user_id"
+};
+const relOf = (meId, otherId, rows) => {
+  const f = rows.find(y => y.requester === otherId || y.addressee === otherId);
+  return !f ? "none" : f.status === "accepted" ? "friend" : f.status === "pending" ? (f.requester === meId ? "pending_out" : "pending_in") : "blocked";
+};
 
 /* ---------- helpers used by the match server ---------- */
 const userFromReq = async req => { if (!ready) return null; try { return await authUser(req); } catch (e) { return null; } };
@@ -261,9 +288,17 @@ async function route(req, res, u) {
   const p = u.pathname;
   if (!ready) {
     if (req.method === "GET" && p === "/api/me") return json(res, 200, { enabled: false, user: null });
+    if (req.method === "GET" && p === "/api/leaderboard") return json(res, 200, { cat: "wins", rows: [] });
     return json(res, 503, { error: "Accounts are not set up on this server yet" });
   }
   try {
+    if (req.method === "GET" && p === "/api/leaderboard") {
+      const cat = u.searchParams.get("cat") || "wins";
+      if (!Object.prototype.hasOwnProperty.call(LB, cat)) return json(res, 400, { error: "Unknown category" });
+      const viewer = await authUser(req);
+      const r = await pool.query("SELECT x.v, u.player_id, u.username, (u.avatar IS NOT NULL) AS av FROM (" + LB[cat] + ") x JOIN users u ON u.id = x.user_id ORDER BY x.v DESC, u.username LIMIT 50");
+      return json(res, 200, { cat, rows: r.rows.map((x, i) => ({ rank: i + 1, id: x.player_id, username: x.username, av: x.av, v: x.v, me: !!viewer && viewer.player_id === x.player_id })) });
+    }
     if (req.method === "GET" && p === "/api/me") {
       const me = await authUser(req);
       return json(res, 200, { enabled: true, user: me ? pub(me) : null, stats: me ? await stats(me.id) : null });
@@ -274,6 +309,42 @@ async function route(req, res, u) {
       if (p === "/api/me/events") return openEvents(req, res, me);
       if (p === "/api/me/friends") return json(res, 200, await friendsList(me));
       if (p === "/api/me/notifications") return json(res, 200, await notifList(me.id));
+      if (p === "/api/me/dm") {
+        const f = await friendUser(me.id, String(u.searchParams.get("with") || ""));
+        if (!f) return json(res, 403, { error: "You can only chat with friends" });
+        const r = await pool.query("SELECT id, from_id, text, created_at FROM dms WHERE (from_id = $1 AND to_id = $2) OR (from_id = $2 AND to_id = $1) ORDER BY id DESC LIMIT 60", [me.id, f.id]);
+        await pool.query("UPDATE dms SET read = true WHERE to_id = $1 AND from_id = $2 AND NOT read", [me.id, f.id]);
+        return json(res, 200, { name: f.username, status: statusOf(f.id), messages: r.rows.reverse().map(x => ({ mine: x.from_id === me.id, text: x.text, at: x.created_at })) });
+      }
+      if (p === "/api/me/online") {
+        const ids = [...conns.keys()].filter(id => id !== me.id);
+        if (!ids.length) return json(res, 200, { players: [] });
+        const r = await pool.query(`SELECT u.id, u.player_id, u.username, u.show_online, (u.avatar IS NOT NULL) AS av FROM users u WHERE u.id = ANY($1)
+          AND NOT EXISTS (SELECT 1 FROM friendships f WHERE f.status = 'blocked' AND ((f.requester = u.id AND f.addressee = $2) OR (f.requester = $2 AND f.addressee = u.id))) LIMIT 100`, [ids, me.id]);
+        const fr = (await pool.query("SELECT requester, addressee, status FROM friendships WHERE (requester = $1 AND addressee = ANY($2)) OR (addressee = $1 AND requester = ANY($2))", [me.id, ids])).rows;
+        const order = { game: 0, online: 1, away: 2 };
+        const players = r.rows.map(x => ({ id: x.player_id, username: x.username, av: x.av, status: statusOf(x.id), rel: relOf(me.id, x.id, fr), show: x.show_online }))
+          .filter(x => x.show || x.rel === "friend").map(({ show, ...x }) => x)
+          .sort((a, b) => order[a.status] - order[b.status] || a.username.localeCompare(b.username));
+        return json(res, 200, { players });
+      }
+      if (p === "/api/me/profile") {
+        const [st, fc, rc] = await Promise.all([stats(me.id),
+          pool.query("SELECT count(*)::int AS n FROM friendships WHERE status = 'accepted' AND (requester = $1 OR addressee = $1)", [me.id]),
+          pool.query("SELECT mode, diff, won, attempts, played_at FROM games WHERE user_id = $1 ORDER BY played_at DESC, id DESC LIMIT 10", [me.id])]);
+        return json(res, 200, { stats: st, friends: fc.rows[0].n, recent: rc.rows.map(x => ({ mode: x.mode, diff: x.diff, won: x.won, attempts: x.attempts, at: x.played_at })) });
+      }
+      if (p === "/api/me/player") { // public view of another player's account (never shows the email)
+        const pid = String(u.searchParams.get("id") || "");
+        const t = (await pool.query("SELECT id, player_id, username, (avatar IS NOT NULL) AS av, created_at, last_seen FROM users WHERE player_id = $1", [pid])).rows[0];
+        if (!t) return json(res, 404, { error: "Player not found" });
+        const row = t.id === me.id ? null : await pairRow(me.id, t.id);
+        if (row && row.status === "blocked" && row.requester !== me.id) return json(res, 404, { error: "Player not found" });
+        const rel = t.id === me.id ? "self" : !row ? "none" : row.status === "accepted" ? "friend" : row.status === "pending" ? (row.requester === me.id ? "pending_out" : "pending_in") : "blocked";
+        const out = { id: t.player_id, username: t.username, av: t.av, joined: t.created_at, rel, stats: await stats(t.id) };
+        if (rel === "friend") { out.status = statusOf(t.id); out.seen = t.last_seen; }
+        return json(res, 200, out);
+      }
       if (p === "/api/me/friends/search") {
         const raw = (u.searchParams.get("q") || "").trim().slice(0, 24);
         if (raw.length < 2) return json(res, 200, { results: [] });
@@ -389,6 +460,21 @@ async function route(req, res, u) {
       await pool.query("UPDATE notifications SET read = true WHERE user_id = $1 AND NOT read", [me.id]);
       return json(res, 200, { ok: true });
     }
+    if (p === "/api/me/dm/send") {
+      if (limited(req, "dm", 40, 60000)) return json(res, 429, { error: "Slow down a little" });
+      const f = await friendUser(me.id, String(b.id || ""));
+      if (!f) return json(res, 403, { error: "You can only chat with friends" });
+      const text = String(b.text || "").replace(/\s+/g, " ").trim().slice(0, 500);
+      if (!text) return json(res, 400, { error: "Empty message" });
+      await pool.query("INSERT INTO dms(from_id, to_id, text) VALUES ($1, $2, $3)", [me.id, f.id, text]);
+      emit(f.id, { t: "dm", from: me.player_id, name: me.username, text, ts: Date.now() });
+      return json(res, 200, { ok: true });
+    }
+    if (p === "/api/me/settings") {
+      if (typeof b.showOnline !== "boolean") return json(res, 400, { error: "Bad request" });
+      const r = await pool.query("UPDATE users SET show_online = $1 WHERE id = $2 RETURNING *", [b.showOnline, me.id]);
+      return json(res, 200, { user: pub(r.rows[0]) });
+    }
     const fm = p.match(/^\/api\/me\/friends\/(request|accept|reject|cancel|remove|block|unblock)$/);
     if (fm) {
       if (limited(req, "soc", 60, 60000)) return json(res, 429, { error: "Slow down a little" });
@@ -492,4 +578,4 @@ async function route(req, res, u) {
   }
 }
 
-module.exports = { init, route, userFromReq, isOnline, emitTo: emit, friendUser, recordMatch, _test: { hashPw, checkPw, openEvents, refreshPresence, statusOf, conns, setPool: x => { pool = x; } } };
+module.exports = { init, route, userFromReq, isOnline, emitTo: emit, friendUser, recordMatch, _test: { setReady: v => { ready = v; }, hashPw, checkPw, openEvents, refreshPresence, statusOf, conns, setPool: x => { pool = x; } } };

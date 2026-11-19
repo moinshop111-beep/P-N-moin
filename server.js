@@ -155,7 +155,7 @@ const STATIC = {
 
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, "http://x");
-  if (u.pathname.startsWith("/api/auth/") || u.pathname.startsWith("/api/me") || u.pathname === "/api/sync") return auth.route(req, res, u);
+  if (u.pathname.startsWith("/api/auth/") || u.pathname.startsWith("/api/me") || u.pathname === "/api/sync" || u.pathname === "/api/leaderboard") return auth.route(req, res, u);
   if (req.method === "GET" && u.pathname === "/api/ping") {
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }); return res.end('{"ok":1}');
   }
