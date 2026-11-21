@@ -153,8 +153,12 @@ const STATIC = {
   "/manifest.json": ["application/manifest+json", "manifest.json"],
   "/service-worker.js": ["text/javascript", "service-worker.js"],
   "/.well-known/assetlinks.json": ["application/json", "assetlinks.json"],
-  "/admin": ["text/html; charset=utf-8", "admin.html"]
+  "/admin": ["text/html; charset=utf-8", "admin.html"],
+  "/pn-moin.apk": ["application/vnd.android.package-archive", ["pn-moin.apk", "P&N MOIN.apk", "P&N-MOIN.apk"]]
 };
+
+// Try several file names in turn (so the APK can be uploaded under the name it was downloaded with)
+const readFirst = (names, cb) => { const [n, ...rest] = names; fs.readFile(path.join(__dirname, n), (e, d) => (e && rest.length ? readFirst(rest, cb) : cb(e, d))); };
 
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, "http://x");
@@ -167,11 +171,11 @@ const server = http.createServer((req, res) => {
       .map(r => ({ code: r.code, host: r.names[0], age: Date.now() - r.t }));
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }); return res.end(JSON.stringify({ rooms: list }));
   }
-  if (req.method === "GET" && Object.prototype.hasOwnProperty.call(STATIC, u.pathname)) {
+  if ((req.method === "GET" || req.method === "HEAD") && Object.prototype.hasOwnProperty.call(STATIC, u.pathname)) {
     const [type, file] = STATIC[u.pathname];
-    return fs.readFile(path.join(__dirname, file), (e, d) => {
+    return readFirst([].concat(file), (e, d) => {
       if (e) { res.writeHead(404); return res.end("Not found"); }
-      res.writeHead(200, { "Content-Type": type, "Cache-Control": u.pathname === "/service-worker.js" || u.pathname === "/admin" ? "no-cache" : "public, max-age=3600", "X-Robots-Tag": "noindex" }); res.end(d);
+      res.writeHead(200, { "Content-Type": type, "Cache-Control": u.pathname === "/service-worker.js" || u.pathname === "/admin" ? "no-cache" : "public, max-age=3600", "X-Robots-Tag": "noindex", ...(u.pathname === "/pn-moin.apk" ? { "Content-Disposition": 'attachment; filename="P&N-MOIN.apk"' } : {}) }); res.end(d);
     });
   }
   if (req.method === "GET" && Object.prototype.hasOwnProperty.call(assets, u.pathname)) {

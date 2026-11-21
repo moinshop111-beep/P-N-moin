@@ -182,6 +182,7 @@ tr.new{animation:rowin .4s}
 .msg small{display:block;color:var(--dim);font-size:10px;margin-top:2px}
 .dmact{padding:6px 12px}
 .dm .chatin{padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+.inst{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--blue);border-radius:14px;padding:8px 10px;margin-bottom:10px;font-size:13px}
 .codeIn{width:100%;margin:0 0 14px;padding:14px;border-radius:14px;border:2px solid var(--line);background:var(--bg);color:var(--blue);font:900 30px var(--font);text-align:center;letter-spacing:.4em;user-select:text}
 .codeIn:focus{outline:none;border-color:var(--blue);box-shadow:0 0 16px rgba(45,226,255,.4)}
 #hist2Wrap{margin-top:12px}
@@ -199,6 +200,7 @@ tr.new{animation:rowin .4s}
     <button class="icon-btn" id="muteBtn" aria-label="Toggle sound" title="Sound">🔊</button>
   </header>
   <div class="net on" id="net"><i></i><span>Online</span></div>
+  <div id="installBar" class="inst hidden"><span>📲 Get the P&amp;N MOIN app</span><span style="flex:1"></span><button class="sbtn ok" id="instGo">Install</button><button class="sbtn ok" id="instApk">APK</button><button class="sbtn" id="instX" aria-label="Hide">✕</button></div>
 
   <!-- MENU -->
   <section id="home" class="screen">
@@ -1168,6 +1170,9 @@ tr.new{animation:rowin .4s}
       (A.user ? `<div class="frow"><div class="fi"><b>${esc(A.user.username)}</b><small>${esc(A.user.email)}</small></div><button class="sbtn" id="sEdit">Edit</button></div>
         <button class="ghost" id="sOut">Sign out</button><button class="ghost" id="sDel" style="color:var(--bad)">Delete account</button>`
         : '<button class="cta" id="sIn">SIGN IN / CREATE ACCOUNT</button>') +
+      '<div class="sec">App</div>' + (isApp() ? '<div class="empty">You’re using the app 👍</div>' :
+        (DEFER ? '<button class="ghost" id="sInst">📲 Install app</button>' : "") + (APK_OK && isAndroid ? '<button class="ghost" id="sApk">⬇️ Download Android app (APK)</button>' : "") +
+        (!DEFER && !(APK_OK && isAndroid) ? '<div class="rules">In your browser menu choose “Install app” or “Add to Home screen”.</div>' : "")) +
       '<div class="sec">This device</div><button class="ghost" id="sClear">Clear games and statistics on this device</button>' +
       '<div class="sec">About</div><div class="rules"><b>P&amp;N MOIN</b> · version 1.0<br>Created by <b>MOIN</b>.<br>Online match records are saved to keep the game fair.<br>Tip: in your browser menu choose “Install app” or “Add to Home screen” to play it like an app.</div>';
   }
@@ -1184,9 +1189,40 @@ tr.new{animation:rowin .4s}
     else if (id === "sOut") doLogout();
     else if (id === "sDel") deleteForm();
     else if (id === "sIn") loginForm();
+    else if (id === "sInst") installChrome();
+    else if (id === "sApk") apkHelp();
     else if (id === "sClear") showModal({ icon: "🗑️", title: "Clear this device?", body: "<p>This deletes the games and statistics saved on this device. Your online account is not changed.</p>",
       actions: [{ label: "CLEAR", fn: async () => { await idbClear(); try { localStorage.removeItem(SKEY); } catch (er) {} toast("Cleared", true); } }, { label: "Cancel", ghost: true }] });
   });
+
+  /* ---------- Install the app ---------- */
+  let DEFER = null, APK_OK = false;
+  const isApp = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true || (document.referrer || "").startsWith("android-app://");
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  function installUI() {
+    let hide = false;
+    try { hide = Date.now() < Number(localStorage.getItem("pn_inst_hide") || 0); } catch (e) {}
+    $("#installBar").classList.toggle("hidden", !(!isApp() && isAndroid && (DEFER || APK_OK)) || hide);
+    $("#instGo").classList.toggle("hidden", !DEFER);
+    $("#instApk").classList.toggle("hidden", !APK_OK);
+  }
+  window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); DEFER = e; installUI(); });
+  window.addEventListener("appinstalled", () => { DEFER = null; installUI(); toast("App installed", true); });
+  async function installChrome() {
+    if (!DEFER) return;
+    DEFER.prompt();
+    try { await DEFER.userChoice; } catch (e) {}
+    DEFER = null; installUI();
+  }
+  function apkHelp() {
+    showModal({ icon: "📲", title: "Get the Android app",
+      body: "<p>1. Tap Download.<br>2. Open the downloaded file and tap Install.<br>3. If your phone asks, allow “Install unknown apps” for your browser. If Play Protect warns, choose “Install anyway”.</p>",
+      actions: [{ label: "DOWNLOAD", fn: () => { const a = document.createElement("a"); a.href = "/pn-moin.apk"; a.download = "P&N-MOIN.apk"; document.body.appendChild(a); a.click(); a.remove(); } }, { label: "Cancel", ghost: true }] });
+  }
+  $("#instGo").onclick = installChrome;
+  $("#instApk").onclick = apkHelp;
+  $("#instX").onclick = () => { try { localStorage.setItem("pn_inst_hide", String(Date.now() + 7 * 864e5)); } catch (e) {} installUI(); };
+  fetch("/pn-moin.apk", { method: "HEAD" }).then(r => { APK_OK = r.ok; installUI(); }).catch(() => {});
 
   /* ---------- Online duel ---------- */
   const O = { room: null, pid: 0, tok: "", st: null, es: null, shown: false, cnt: 0 };
