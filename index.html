@@ -786,7 +786,7 @@ tr.new{animation:rowin .4s}
     showModal({ icon: "📝", title: "Create account",
       body: fld("f_un", "Username (3-20 letters, numbers, _)", "text", "", 'maxlength="20" autocapitalize="off"') + fld("f_em", "Email", "email") +
         fld("f_pw", "Password (8+ characters)", "password") + fld("f_pw2", "Confirm password", "password") +
-        '<label class="avl">Profile picture (optional)<input id="f_av" type="file" accept="image/*"></label><div id="amsg" class="amsg"></div>',
+        '<label class="avl">Profile picture (optional)<input id="f_av" type="file" accept="image/*"></label><p style="font-size:12px;margin:0 0 8px;color:var(--dim)">Online match records (secret codes and guesses) are saved to keep games fair.</p><div id="amsg" class="amsg"></div>',
       actions: [{ label: "CREATE ACCOUNT", keep: true, fn: doRegister }, { label: "I already have an account", ghost: true, keep: true, fn: loginForm }, { label: "Cancel", ghost: true }] });
   }
   async function doRegister() {
@@ -1169,7 +1169,7 @@ tr.new{animation:rowin .4s}
         <button class="ghost" id="sOut">Sign out</button><button class="ghost" id="sDel" style="color:var(--bad)">Delete account</button>`
         : '<button class="cta" id="sIn">SIGN IN / CREATE ACCOUNT</button>') +
       '<div class="sec">This device</div><button class="ghost" id="sClear">Clear games and statistics on this device</button>' +
-      '<div class="sec">About</div><div class="rules"><b>P&amp;N MOIN</b> · version 1.0<br>Created by <b>MOIN</b>.<br>Tip: in your browser menu choose “Install app” or “Add to Home screen” to play it like an app.</div>';
+      '<div class="sec">About</div><div class="rules"><b>P&amp;N MOIN</b> · version 1.0<br>Created by <b>MOIN</b>.<br>Online match records are saved to keep the game fair.<br>Tip: in your browser menu choose “Install app” or “Add to Home screen” to play it like an app.</div>';
   }
   $("#sBox").addEventListener("click", async e => {
     const id = e.target.id;

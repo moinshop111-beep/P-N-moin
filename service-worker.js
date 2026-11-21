@@ -1,5 +1,5 @@
 // P&N MOIN service worker: makes the game load and play with no internet.
-const CACHE = "pn-moin-v1";
+const CACHE = "pn-moin-v2";
 const SHELL = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -11,11 +11,11 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   const r = e.request, u = new URL(r.url);
   // Never touch the live API or the real-time event stream
-  if (r.method !== "GET" || u.origin !== location.origin || u.pathname.startsWith("/api/")) return;
+  if (r.method !== "GET" || u.origin !== location.origin || u.pathname.startsWith("/api/") || u.pathname === "/admin") return;
   if (r.mode === "navigate") {
     // Network first so updates arrive; cached copy when offline
     e.respondWith(fetch(r).then(res => {
-      if (res.ok) { const cp = res.clone(); caches.open(CACHE).then(c => c.put("/", cp)); }
+      if (res.ok && (u.pathname === "/" || u.pathname === "/index.html")) { const cp = res.clone(); caches.open(CACHE).then(c => c.put("/", cp)); }
       return res;
     }).catch(() => caches.match("/")));
     return;

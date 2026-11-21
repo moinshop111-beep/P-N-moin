@@ -44,6 +44,8 @@ function finish(r) {
     r.wins[r.winner]++;
     [0, 1].forEach(p => { if (r.users[p]) auth.recordMatch(r.users[p], "m:" + r.mid + ":" + r.round, r.winner === p, Math.max(1, r.guesses[p].length)); });
   }
+  // full record of the finished match for the owner (fair-play checks)
+  auth.logMatch({ mid: r.mid, round: r.round, users: r.users, names: r.names, secrets: r.secret, guesses: r.guesses, winner: r.winner, reason: r.reason, vis: r.vis });
 }
 function forfeit(r, winner, reason) { r.winner = winner; r.reason = reason; finish(r); push(r); }
 
@@ -150,12 +152,13 @@ const assets = {
 const STATIC = {
   "/manifest.json": ["application/manifest+json", "manifest.json"],
   "/service-worker.js": ["text/javascript", "service-worker.js"],
-  "/.well-known/assetlinks.json": ["application/json", "assetlinks.json"]
+  "/.well-known/assetlinks.json": ["application/json", "assetlinks.json"],
+  "/admin": ["text/html; charset=utf-8", "admin.html"]
 };
 
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, "http://x");
-  if (u.pathname.startsWith("/api/auth/") || u.pathname.startsWith("/api/me") || u.pathname === "/api/sync" || u.pathname === "/api/leaderboard") return auth.route(req, res, u);
+  if (u.pathname.startsWith("/api/auth/") || u.pathname.startsWith("/api/me") || u.pathname === "/api/sync" || u.pathname === "/api/leaderboard" || u.pathname.startsWith("/api/admin/")) return auth.route(req, res, u);
   if (req.method === "GET" && u.pathname === "/api/ping") {
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" }); return res.end('{"ok":1}');
   }
@@ -168,7 +171,7 @@ const server = http.createServer((req, res) => {
     const [type, file] = STATIC[u.pathname];
     return fs.readFile(path.join(__dirname, file), (e, d) => {
       if (e) { res.writeHead(404); return res.end("Not found"); }
-      res.writeHead(200, { "Content-Type": type, "Cache-Control": u.pathname === "/service-worker.js" ? "no-cache" : "public, max-age=3600" }); res.end(d);
+      res.writeHead(200, { "Content-Type": type, "Cache-Control": u.pathname === "/service-worker.js" || u.pathname === "/admin" ? "no-cache" : "public, max-age=3600", "X-Robots-Tag": "noindex" }); res.end(d);
     });
   }
   if (req.method === "GET" && Object.prototype.hasOwnProperty.call(assets, u.pathname)) {

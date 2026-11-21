@@ -67,7 +67,25 @@ CREATE TABLE IF NOT EXISTS dms (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS dms_pair ON dms (LEAST(from_id, to_id), GREATEST(from_id, to_id), id);
-CREATE INDEX IF NOT EXISTS dms_unread ON dms (to_id) WHERE NOT read;`;
+CREATE INDEX IF NOT EXISTS dms_unread ON dms (to_id) WHERE NOT read;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS match_log (
+  id SERIAL PRIMARY KEY,
+  mid TEXT NOT NULL,
+  round INT NOT NULL,
+  p0 INT REFERENCES users(id) ON DELETE SET NULL,
+  p1 INT REFERENCES users(id) ON DELETE SET NULL,
+  n0 TEXT NOT NULL,
+  n1 TEXT NOT NULL,
+  s0 TEXT,
+  s1 TEXT,
+  guesses JSONB NOT NULL,
+  winner TEXT NOT NULL,
+  reason TEXT,
+  vis TEXT,
+  played_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (mid, round)
+);`;
 
 let pool = null, ready = false;
 
@@ -86,6 +104,7 @@ async function init() {
     setInterval(() => {
       pool.query("DELETE FROM sessions WHERE expires_at < now()").catch(() => {});
       pool.query("DELETE FROM notifications WHERE created_at < now() - interval '30 days'").catch(() => {});
+      pool.query("DELETE FROM match_log WHERE played_at < now() - interval '90 days'").catch(() => {});
       pool.query("DELETE FROM dms WHERE created_at < now() - interval '60 days'").catch(() => {});
     }, 3600e3);
     setInterval(() => conns.forEach(set => set.forEach(c => { try { c.res.write(": ping\n\n"); } catch (e) {} })), 25000);
@@ -157,7 +176,7 @@ async function newSession(req, res, userId, payload) {
 async function authUser(req) {
   const t = getCookie(req, "pn_sid");
   if (!t) return null;
-  const r = await pool.query("SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > now()", [sha(t)]);
+  const r = await pool.query("SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > now() AND NOT u.banned", [sha(t)]);
   if (r.rows[0]) pool.query("UPDATE users SET last_seen = now() WHERE id = $1", [r.rows[0].id]).catch(() => {});
   return r.rows[0] || null;
 }
@@ -283,6 +302,64 @@ const recordMatch = (userId, cid, won, attempts) => {
     .catch(e => console.log("recordMatch:", e.message));
 };
 
+/* ---------- owner (admin) tools ---------- */
+const logMatch = m => {
+  if (!ready) return;
+  pool.query("INSERT INTO match_log(mid, round, p0, p1, n0, n1, s0, s1, guesses, winner, reason, vis) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (mid, round) DO NOTHING",
+    [m.mid, m.round, m.users[0], m.users[1], m.names[0], m.names[1], m.secrets[0], m.secrets[1], JSON.stringify(m.guesses), String(m.winner), m.reason, m.vis])
+    .catch(e => console.log("logMatch:", e.message));
+};
+function adminKeyState(req) {
+  const key = process.env.ADMIN_KEY;
+  if (!key || key.length < 12) return "off";
+  const h = t => crypto.createHash("sha256").update(t).digest();
+  return crypto.timingSafeEqual(h(String(req.headers["x-admin-key"] || "")), h(key)) ? "ok" : "bad";
+}
+async function adminRoute(req, res, u) {
+  const p = u.pathname, k = adminKeyState(req);
+  if (k === "off") return json(res, 503, { error: "Admin is switched off. Add an ADMIN_KEY (12 or more characters) in Render, then deploy." });
+  if (k === "bad") return json(res, limited(req, "admbad", 8, 900e3) ? 429 : 401, { error: "Wrong key" });
+  const like = "%" + String(u.searchParams.get("q") || "").trim().slice(0, 40).replace(/[\\%_]/g, "\\$&") + "%";
+  if (req.method === "GET" && p === "/api/admin/overview") {
+    const us = (await pool.query(`SELECT count(*)::int AS total,
+      count(*) FILTER (WHERE created_at > now() - interval '1 day')::int AS new1,
+      count(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS new7,
+      count(*) FILTER (WHERE last_seen > now() - interval '1 day')::int AS act1,
+      count(*) FILTER (WHERE last_seen > now() - interval '7 days')::int AS act7,
+      count(*) FILTER (WHERE banned)::int AS banned FROM users`)).rows[0];
+    const gm = (await pool.query("SELECT count(*)::int AS games, count(*) FILTER (WHERE source = 'verified')::int AS verified FROM games")).rows[0];
+    const ml = (await pool.query("SELECT count(*)::int AS total, count(*) FILTER (WHERE played_at > now() - interval '1 day')::int AS d1 FROM match_log")).rows[0];
+    const days = (await pool.query("SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day, count(*)::int AS n FROM users WHERE created_at > now() - interval '14 days' GROUP BY 1 ORDER BY 1")).rows;
+    const live = { online: 0, away: 0, game: 0 };
+    conns.forEach((set, id) => { if (set.size) { const st = statusOf(id); if (live[st] !== undefined) live[st]++; } });
+    return json(res, 200, { users: us, games: gm, matches: ml, signups: days, live });
+  }
+  if (req.method === "GET" && p === "/api/admin/users") {
+    const r = await pool.query(`SELECT u.id, u.player_id, u.username, u.email, u.created_at, u.last_seen, u.banned,
+      (SELECT count(*)::int FROM games g WHERE g.user_id = u.id) AS games, (SELECT count(*)::int FROM games g WHERE g.user_id = u.id AND g.won) AS wins
+      FROM users u WHERE u.username ILIKE $1 OR u.email ILIKE $1 OR u.player_id ILIKE $1 ORDER BY u.created_at DESC LIMIT 100`, [like]);
+    return json(res, 200, { users: r.rows.map(x => ({ id: x.player_id, username: x.username, email: x.email, created: x.created_at, seen: x.last_seen, banned: x.banned, games: x.games, wins: x.wins, status: statusOf(x.id) })) });
+  }
+  if (req.method === "GET" && p === "/api/admin/matches") {
+    const uid = String(u.searchParams.get("user") || "").trim().toUpperCase();
+    const r = await pool.query(`SELECT m.mid, m.round, m.n0, m.n1, m.s0, m.s1, m.guesses, m.winner, m.reason, m.vis, m.played_at, a.player_id AS id0, b.player_id AS id1
+      FROM match_log m LEFT JOIN users a ON a.id = m.p0 LEFT JOIN users b ON b.id = m.p1
+      WHERE $1 = '' OR a.player_id = $1 OR b.player_id = $1 ORDER BY m.id DESC LIMIT 50`, [uid]);
+    return json(res, 200, { matches: r.rows });
+  }
+  if (req.method === "POST" && p === "/api/admin/ban") {
+    if (!/json/.test(req.headers["content-type"] || "")) return json(res, 415, { error: "Bad request" });
+    const b = await readBody(req);
+    if (!b || typeof b.id !== "string") return json(res, 400, { error: "Bad request" });
+    const banned = !!b.banned;
+    const r = await pool.query("UPDATE users SET banned = $2 WHERE player_id = $1 RETURNING id", [b.id, banned]);
+    if (!r.rows[0]) return json(res, 404, { error: "Player not found" });
+    if (banned) await pool.query("DELETE FROM sessions WHERE user_id = $1", [r.rows[0].id]);
+    return json(res, 200, { ok: true, banned });
+  }
+  return json(res, 404, { error: "Not found" });
+}
+
 /* ---------- routes ---------- */
 async function route(req, res, u) {
   const p = u.pathname;
@@ -299,6 +376,7 @@ async function route(req, res, u) {
       const r = await pool.query("SELECT x.v, u.player_id, u.username, (u.avatar IS NOT NULL) AS av FROM (" + LB[cat] + ") x JOIN users u ON u.id = x.user_id ORDER BY x.v DESC, u.username LIMIT 50");
       return json(res, 200, { cat, rows: r.rows.map((x, i) => ({ rank: i + 1, id: x.player_id, username: x.username, av: x.av, v: x.v, me: !!viewer && viewer.player_id === x.player_id })) });
     }
+    if (p.startsWith("/api/admin/")) return adminRoute(req, res, u);
     if (req.method === "GET" && p === "/api/me") {
       const me = await authUser(req);
       return json(res, 200, { enabled: true, user: me ? pub(me) : null, stats: me ? await stats(me.id) : null });
@@ -410,6 +488,7 @@ async function route(req, res, u) {
       let good = false;
       if (user) good = await checkPw(pw, user.pass_hash); else await scrypt(pw, Buffer.alloc(16));
       if (!good) return json(res, 401, { error: "Wrong username/email or password" });
+      if (user.banned) return json(res, 403, { error: "This account has been suspended" });
       return newSession(req, res, user.id, { user: pub(user), stats: await stats(user.id) });
     }
 
@@ -578,4 +657,4 @@ async function route(req, res, u) {
   }
 }
 
-module.exports = { init, route, userFromReq, isOnline, emitTo: emit, friendUser, recordMatch, _test: { setReady: v => { ready = v; }, hashPw, checkPw, openEvents, refreshPresence, statusOf, conns, setPool: x => { pool = x; } } };
+module.exports = { init, route, logMatch, userFromReq, isOnline, emitTo: emit, friendUser, recordMatch, _test: { setReady: v => { ready = v; }, hashPw, checkPw, openEvents, refreshPresence, statusOf, conns, setPool: x => { pool = x; } } };

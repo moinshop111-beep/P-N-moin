@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>P&amp;N MOIN – Owner panel</title>
+<style>
+:root{--bg:#07071a;--panel:#10102b;--panel2:#171740;--line:#2b2b66;--blue:#2de2ff;--purple:#a855f7;--text:#e9ecff;--dim:#8d92c9;--good:#37ffb0;--bad:#ff5577;--warn:#ffcc55}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--text);padding:14px;max-width:760px;margin:0 auto}
+h1{font-size:20px;margin-bottom:4px;background:linear-gradient(90deg,var(--blue),var(--purple));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--dim);font-size:13px;margin-bottom:14px}
+input,button{font:inherit;color:inherit}
+input{width:100%;padding:12px 14px;border-radius:12px;border:2px solid var(--line);background:var(--panel);margin-bottom:10px}
+button{cursor:pointer;border:0;border-radius:12px;padding:10px 14px;background:var(--panel2);border:1px solid var(--line);font-weight:700}
+button.cta{width:100%;background:linear-gradient(135deg,var(--blue),var(--purple));color:#07071a;border:0}
+button.bad{color:var(--bad);border-color:rgba(255,85,119,.5)}button.ok{color:var(--good);border-color:rgba(55,255,176,.5)}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:12px 0}
+.tabs button.sel{border-color:var(--purple);background:var(--panel2);box-shadow:0 0 12px rgba(168,85,247,.4)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 6px;text-align:center}
+.card b{display:block;font-size:24px;color:var(--blue)}.card small{color:var(--dim);font-size:12px}
+.sec{color:var(--dim);font-size:13px;margin:14px 0 8px}
+.row{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;font-size:14px}
+.row .top{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.row small{color:var(--dim);display:block;font-size:12px;word-break:break-all}
+.bars{display:flex;align-items:flex-end;gap:4px;height:90px;margin-bottom:6px}
+.bars div{flex:1;background:linear-gradient(var(--blue),var(--purple));border-radius:4px 4px 0 0;min-height:2px;position:relative}
+.bars i{position:absolute;top:-16px;left:0;right:0;text-align:center;font-size:10px;font-style:normal;color:var(--dim)}
+.err{color:var(--bad);min-height:20px;font-size:14px;margin-bottom:8px}
+.warn{color:var(--warn);font-size:12px}
+.code{letter-spacing:.2em;color:var(--blue);font-weight:700}
+.hidden{display:none}
+.gl{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.gl span{background:var(--panel2);border-radius:8px;padding:2px 8px;font-size:12px}
+</style>
+</head>
+<body>
+<h1>P&amp;N MOIN – Owner panel</h1>
+<div class="sub">Private. Only you should open this page.</div>
+
+<div id="login">
+  <input id="key" type="password" placeholder="Admin key" autocomplete="off">
+  <div class="err" id="lerr"></div>
+  <button class="cta" id="go">OPEN</button>
+</div>
+
+<div id="app" class="hidden">
+  <div class="tabs" id="tabs"><button data-t="ov" class="sel">Overview</button><button data-t="us">Players</button><button data-t="ma">Matches</button></div>
+  <div id="view"></div>
+  <button id="out" style="margin-top:16px;width:100%">Lock panel</button>
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const when = t => t ? new Date(t).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "–";
+const DOT = { online: "🟢", away: "🟡", game: "🎮", offline: "🔴" };
+let key = "", tab = "ov", userFilter = "";
+try { key = sessionStorage.getItem("pn_admin") || ""; } catch (e) {}
+
+async function call(path, body) {
+  try {
+    const r = await fetch("/api/admin/" + path, { method: body ? "POST" : "GET", headers: Object.assign({ "x-admin-key": key }, body ? { "Content-Type": "application/json" } : {}), body: body ? JSON.stringify(body) : undefined });
+    return await r.json();
+  } catch (e) { return { error: "Can’t reach the server" }; }
+}
+async function unlock() {
+  key = $("#key").value || key;
+  const r = await call("overview");
+  if (r.error) { $("#lerr").textContent = r.error; $("#login").classList.remove("hidden"); $("#app").classList.add("hidden"); return; }
+  try { sessionStorage.setItem("pn_admin", key); } catch (e) {}
+  $("#login").classList.add("hidden"); $("#app").classList.remove("hidden");
+  show(tab, r);
+}
+$("#go").onclick = unlock;
+$("#key").addEventListener("keydown", e => { if (e.key === "Enter") unlock(); });
+$("#out").onclick = () => { try { sessionStorage.removeItem("pn_admin"); } catch (e) {} key = ""; location.reload(); };
+$("#tabs").onclick = e => { const b = e.target.closest("button[data-t]"); if (b) { tab = b.dataset.t; show(tab); } };
+
+async function show(t, pre) {
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("sel", b.dataset.t === t));
+  const v = $("#view"); v.innerHTML = '<div class="sub">Loading…</div>';
+  if (t === "ov") overview(pre || await call("overview"));
+  else if (t === "us") users();
+  else matches();
+}
+function overview(r) {
+  if (r.error) { $("#view").innerHTML = `<div class="err">${esc(r.error)}</div>`; return; }
+  const u = r.users, g = r.games, m = r.matches, l = r.live, max = Math.max(1, ...r.signups.map(x => x.n));
+  const c = (n, l2) => `<div class="card"><b>${n}</b><small>${l2}</small></div>`;
+  $("#view").innerHTML = '<div class="sec">Players (signed-in accounts)</div><div class="grid">' + c(u.total, "Registered") + c(u.new1, "New today") + c(u.new7, "New this week") + c(u.act1, "Active 24 h") + c(u.act7, "Active 7 days") + c(u.banned, "Suspended") + "</div>" +
+    '<div class="sec">Connected right now</div><div class="grid">' + c(l.online, "🟢 Online") + c(l.away, "🟡 Away") + c(l.game, "🎮 In a game") + "</div>" +
+    '<div class="sec">Games</div><div class="grid">' + c(g.games, "Saved games") + c(g.verified, "Verified online") + c(m.total, "Matches logged") + c(m.d1, "Matches 24 h") + "</div>" +
+    '<div class="sec">New players per day (14 days)</div><div class="bars">' + (r.signups.map(x => `<div style="height:${Math.round(x.n / max * 100)}%" title="${esc(x.day)}"><i>${x.n}</i></div>`).join("") || "") + "</div>" +
+    '<div class="sub">Guests who play without an account are not counted.</div>';
+}
+async function users(q) {
+  const r = await call("users?q=" + encodeURIComponent(q || ""));
+  const v = $("#view");
+  if (r.error) { v.innerHTML = `<div class="err">${esc(r.error)}</div>`; return; }
+  v.innerHTML = '<input id="uq" placeholder="Search name, email or ID" autocomplete="off">' + (r.users.length ? r.users.map(x => `<div class="row"><div class="top"><div><b>${esc(x.username)}</b> ${DOT[x.status]}${x.banned ? ' <span class="warn">suspended</span>' : ""}<small>${esc(x.id)} · ${esc(x.email)}</small></div>
+    <div><button data-m="${esc(x.id)}">Matches</button> <button class="${x.banned ? "ok" : "bad"}" data-b="${esc(x.id)}" data-v="${x.banned ? 0 : 1}">${x.banned ? "Restore" : "Suspend"}</button></div></div>
+    <small>${x.games} games · ${x.wins} wins · joined ${when(x.created)} · last seen ${when(x.seen)}</small></div>`).join("") : '<div class="sub">No players found.</div>');
+  const i = $("#uq"); i.value = q || "";
+  let t; i.addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => users(i.value), 400); });
+}
+async function matches() {
+  const r = await call("matches?user=" + encodeURIComponent(userFilter));
+  const v = $("#view");
+  if (r.error) { v.innerHTML = `<div class="err">${esc(r.error)}</div>`; return; }
+  const gl = a => (a || []).map(x => `<span>${esc(x.guess)} · P${x.p} N${x.n}</span>`).join("") || "<span>no guesses</span>";
+  v.innerHTML = (userFilter ? `<div class="sub">Showing matches of ${esc(userFilter)} · <a href="#" id="clr" style="color:var(--blue)">show all</a></div>` : "") +
+    (r.matches.length ? r.matches.map(m => {
+      const w = m.winner === "draw" ? "Draw" : (m.winner === "0" ? m.n0 : m.n1) + " won";
+      const g = m.guesses || [[], []], wi = m.winner === "0" ? 0 : m.winner === "1" ? 1 : -1;
+      const quick = wi >= 0 && !m.reason && (g[wi] || []).length <= 2;
+      return `<div class="row"><div class="top"><b>${esc(m.n0)} vs ${esc(m.n1)}</b><small>${when(m.played_at)}</small></div>
+        <small>${esc(m.id0 || "guest")} · ${esc(m.id1 || "guest")} · ${esc(m.vis || "")} · round ${m.round}</small>
+        <div>${esc(w)}${m.reason ? ` <span class="warn">(${esc(m.reason)})</span>` : ""}${quick ? ' <span class="warn">⚠️ cracked in 2 guesses or fewer</span>' : ""}</div>
+        <div>Secrets: ${esc(m.n0)} <span class="code">${esc(m.s0 || "–")}</span> · ${esc(m.n1)} <span class="code">${esc(m.s1 || "–")}</span></div>
+        <div class="sec" style="margin:6px 0 2px">${esc(m.n0)}’s guesses</div><div class="gl">${gl(g[0])}</div>
+        <div class="sec" style="margin:6px 0 2px">${esc(m.n1)}’s guesses</div><div class="gl">${gl(g[1])}</div></div>`;
+    }).join("") : '<div class="sub">No online matches saved yet. They are saved when a match ends.</div>');
+  const c = $("#clr"); if (c) c.onclick = e => { e.preventDefault(); userFilter = ""; matches(); };
+}
+$("#view").addEventListener("click", async e => {
+  const mb = e.target.closest("button[data-m]"), bb = e.target.closest("button[data-b]");
+  if (mb) { userFilter = mb.dataset.m; tab = "ma"; show("ma"); }
+  if (bb) {
+    const ban = bb.dataset.v === "1";
+    if (!confirm((ban ? "Suspend " : "Restore ") + bb.dataset.b + "?")) return;
+    const r = await call("ban", { id: bb.dataset.b, banned: ban });
+    if (r.error) alert(r.error); else users($("#uq") ? $("#uq").value : "");
+  }
+});
+if (key) unlock();
+</script>
+</body>
+</html>
