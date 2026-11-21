@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.moin.pn.game",
+        "sha256_cert_fingerprints": ["15:4E:94:5A:A6:12:00:10:EB:96:B8:8C:12:52:02:1D:2A:30:78:1C:12:FC:75:D0:F2:89:67:01:BE:47:65:B8"]
+      }
+    }]
